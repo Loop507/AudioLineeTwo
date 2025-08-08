@@ -8,8 +8,10 @@ import io
 import time
 import tempfile
 import os
-import imageio  # Assicurati di averlo in requirements.txt
+import imageio
+import subprocess
 from scipy.signal import find_peaks
+from scipy.io import wavfile
 
 # Classe AudioVisualizer
 class AudioVisualizer:
@@ -225,8 +227,8 @@ class AudioVisualizer:
             ax.scatter(x, y, s=(50+high*100)*size_mult, c=colors['high'], 
                       marker='*', alpha=(0.7+high*0.3)*effects['alpha'])
     
-    def create_video(self, output_path, pattern_type, colors, effects, duration, fps):
-        """Crea un video della visualizzazione"""
+    def create_video_no_audio(self, output_path, pattern_type, colors, effects, duration, fps):
+        """Crea un video senza audio"""
         total_frames = int(duration * fps)
         progress_bar = st.progress(0)
         status_text = st.empty()
@@ -263,8 +265,52 @@ class AudioVisualizer:
         
         # Rimuovi directory temporanea
         os.rmdir(temp_dir)
-        status_text.text("✅ Video creato con successo!")
+        status_text.text("✅ Video senza audio creato")
         progress_bar.empty()
+    
+    def create_video_with_audio(self, output_path, pattern_type, colors, effects, duration, fps):
+        """Crea un video completo con audio"""
+        # Crea un video temporaneo senza audio
+        temp_video_path = output_path.replace('.mp4', '_no_audio.mp4')
+        self.create_video_no_audio(temp_video_path, pattern_type, colors, effects, duration, fps)
+        
+        # Crea un file audio temporaneo
+        temp_audio_path = output_path.replace('.mp4', '.wav')
+        
+        # Estrai l'audio corrispondente alla durata
+        start_sample = 0
+        end_sample = int(duration * self.sr)
+        audio_segment = self.audio_data[start_sample:end_sample]
+        
+        # Normalizza e salva l'audio
+        if np.max(np.abs(audio_segment)) > 0:
+            audio_segment = audio_segment / np.max(np.abs(audio_segment))
+        wavfile.write(temp_audio_path, self.sr, audio_segment)
+        
+        # Combina video e audio usando FFmpeg
+        try:
+            command = [
+                'ffmpeg',
+                '-y',  # Sovrascrivi senza chiedere
+                '-i', temp_video_path,
+                '-i', temp_audio_path,
+                '-c:v', 'copy',  # Copia il video senza ri-encodare
+                '-c:a', 'aac',   # Encodare audio in AAC
+                '-strict', 'experimental',
+                output_path
+            ]
+            subprocess.run(command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        except subprocess.CalledProcessError as e:
+            st.error(f"Errore durante la combinazione audio/video: {e.stderr.decode()}")
+            return False
+        finally:
+            # Pulisci i file temporanei
+            if os.path.exists(temp_video_path):
+                os.remove(temp_video_path)
+            if os.path.exists(temp_audio_path):
+                os.remove(temp_audio_path)
+        
+        return True
 
 # Configurazione pagina
 st.set_page_config(
@@ -456,22 +502,25 @@ def main():
                 with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as tmpfile:
                     video_path = tmpfile.name
                 
-                # Crea il video
-                visualizer.create_video(video_path, pattern_type, colors, effects, duration, frame_rate)
+                # Crea il video con audio
+                success = visualizer.create_video_with_audio(video_path, pattern_type, colors, effects, duration, frame_rate)
                 
-                # Mostra il video e il pulsante di download
-                st.video(video_path)
-                
-                # Pulsante di download
-                with open(video_path, "rb") as f:
-                    video_bytes = f.read()
-                
-                st.download_button(
-                    label="📥 Scarica Video",
-                    data=video_bytes,
-                    file_name=f"audioline_two_{pattern_type}.mp4",
-                    mime="video/mp4"
-                )
+                if success:
+                    # Mostra il video e il pulsante di download
+                    st.video(video_path)
+                    
+                    # Pulsante di download
+                    with open(video_path, "rb") as f:
+                        video_bytes = f.read()
+                    
+                    st.download_button(
+                        label="📥 Scarica Video con Audio",
+                        data=video_bytes,
+                        file_name=f"audioline_two_{pattern_type}.mp4",
+                        mime="video/mp4"
+                    )
+                else:
+                    st.error("Errore nella creazione del video. Controlla i log per maggiori dettagli.")
                 
                 # Pulisci lo stato
                 st.session_state.create_video = False
@@ -493,7 +542,7 @@ def main():
         3. Avvia la visualizzazione
         
         **Nuova Funzionalità:**
-        - **🎥 Crea Video**: Genera e scarica un video della tua visualizzazione
+        - **🎥 Crea Video**: Genera e scarica un video della tua visualizzazione con audio
         
         **Pattern disponibili:**
         - **Blocks**: Blocchi rettangolari strutturati

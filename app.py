@@ -98,7 +98,7 @@ class AudioVisualizer:
         # Colori default se non specificati
         if colors is None:
             colors = {
-                'low': '#00BFFF', 'mid': '#00CED1', 'high': '#40E0D0', 'bg': '#001122'
+                'low': '#00BFFF', 'mid': '#00CED1', 'high': '#40E0D0', 'bg': '#1a1a2e'
             }
         
         # Effetti default se non specificati
@@ -114,7 +114,7 @@ class AudioVisualizer:
         if pattern_type == "blocks":
             self.draw_structured_blocks(ax, low_norm, mid_norm, high_norm, colors, effects, time_idx)
         elif pattern_type == "lines":
-            self.draw_structured_lines(ax, low_norm, mid_norm, high_norm, colors, effects, time_idx)
+            self.draw_lines_pattern(ax, low_norm, mid_norm, high_norm, colors, effects, time_idx)
             
         ax.set_xlim(0, 16)
         ax.set_ylim(0, 10)
@@ -268,7 +268,7 @@ def main():
         color_mid = st.color_picker("Freq. Medie", "#00CED1", help="Colore per frequenze medie")
     with col2:
         color_high = st.color_picker("Freq. Acute", "#40E0D0", help="Colore per frequenze acute")
-        bg_color = st.color_picker("Sfondo", "#001122", help="Colore di sfondo")
+        bg_color = st.color_picker("Sfondo", "#16213e", help="Colore di sfondo")
     
     # Controlli effetti
     st.sidebar.subheader("⚙️ Controlli Effetti")
@@ -393,8 +393,8 @@ def main():
         # Demo pattern statico
         st.markdown("### 🎨 Anteprima Pattern")
         
-        demo_fig, demo_ax = plt.subplots(figsize=(14, 8), facecolor='#001122')
-        demo_ax.set_facecolor('#001122')
+        demo_fig, demo_ax = plt.subplots(figsize=(14, 8), facecolor='#16213e')
+        demo_ax.set_facecolor('#16213e')
         
         # Crea demo semplice senza AudioVisualizer
         colors = ['#00BFFF', '#00CED1', '#40E0D0']

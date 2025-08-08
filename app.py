@@ -8,19 +8,8 @@ import io
 import time
 import tempfile
 import os
-import sys
-import subprocess
-from PIL import Image
+import imageio  # Assicurati di averlo in requirements.txt
 from scipy.signal import find_peaks
-from base64 import b64encode
-
-# Installa le dipendenze mancanti all'avvio
-try:
-    import imageio
-except ImportError:
-    with st.spinner("Installazione delle dipendenze mancanti..."):
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "imageio", "imageio-ffmpeg"])
-    import imageio
 
 # Classe AudioVisualizer
 class AudioVisualizer:

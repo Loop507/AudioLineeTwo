@@ -1,7 +1,6 @@
 import streamlit as st
 import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib.animation as animation
 import matplotlib.patches as patches
 from matplotlib.patches import Rectangle
 import librosa
@@ -9,12 +8,21 @@ import io
 import time
 import tempfile
 import os
+import sys
+import subprocess
 from PIL import Image
 from scipy.signal import find_peaks
-import imageio
 from base64 import b64encode
 
-# Classe AudioVisualizer definita correttamente a livello globale
+# Installa le dipendenze mancanti all'avvio
+try:
+    import imageio
+except ImportError:
+    with st.spinner("Installazione delle dipendenze mancanti..."):
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "imageio", "imageio-ffmpeg"])
+    import imageio
+
+# Classe AudioVisualizer
 class AudioVisualizer:
     def __init__(self, audio_data, sr, duration=30):
         self.audio_data = audio_data
@@ -476,6 +484,7 @@ def main():
                     mime="video/mp4"
                 )
                 
+                # Pulisci lo stato
                 st.session_state.create_video = False
     
     else:

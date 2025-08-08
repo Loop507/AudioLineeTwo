@@ -392,15 +392,39 @@ def main():
         
         # Demo pattern statico
         st.markdown("### 🎨 Anteprima Pattern")
-        demo_colors = {'low': '#00BFFF', 'mid': '#00CED1', 'high': '#40E0D0', 'bg': '#001122'}
-        demo_effects = {'size_mult': 1.0, 'movement': 0.0, 'alpha': 0.7, 'glow': True, 'grid': True, 'gradient': True}
         
-        demo_fig, demo_ax = plt.subplots(figsize=(14, 8), facecolor=demo_colors['bg'])
-        demo_ax.set_facecolor(demo_colors['bg'])
+        demo_fig, demo_ax = plt.subplots(figsize=(14, 8), facecolor='#001122')
+        demo_ax.set_facecolor('#001122')
         
-        # Pattern demo
-        demo_viz = AudioVisualizer(np.random.randn(22050), 22050, 1)
-        demo_viz.draw_structured_blocks(demo_ax, 0.7, 0.5, 0.8, demo_colors, demo_effects, 0)
+        # Crea demo semplice senza AudioVisualizer
+        colors = ['#00BFFF', '#00CED1', '#40E0D0']
+        
+        # Griglia demo 6x8
+        for row in range(6):
+            for col in range(8):
+                x = col * 1.8 + 0.5
+                y = row * 1.3 + 0.5
+                
+                # Scegli colore basato sulla posizione
+                color_idx = (col + row) % 3
+                color = colors[color_idx]
+                
+                # Varia dimensioni
+                if color_idx == 0:  # Basse - grandi
+                    width, height = 1.6, 1.1
+                elif color_idx == 1:  # Medie
+                    width, height = 1.3, 0.9
+                else:  # Acute - piccoli
+                    width, height = 1.0, 0.7
+                
+                # Alpha variabile
+                alpha = 0.4 + (color_idx + 1) * 0.2
+                
+                # Crea rettangolo
+                rect = patches.Rectangle((x, y), width, height,
+                                       facecolor=color, alpha=alpha,
+                                       edgecolor='white', linewidth=0.3)
+                demo_ax.add_patch(rect)
         
         demo_ax.set_xlim(0, 16)
         demo_ax.set_ylim(0, 10)

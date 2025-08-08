@@ -7,7 +7,12 @@ from matplotlib.patches import Rectangle
 import librosa
 import io
 import time
+import tempfile
+import os
+from PIL import Image
 from scipy.signal import find_peaks
+import imageio
+from base64 import b64encode
 
 # Classe AudioVisualizer definita correttamente a livello globale
 class AudioVisualizer:
@@ -48,15 +53,18 @@ class AudioVisualizer:
         
         return low_energy, mid_energy, high_energy
     
-    def create_pattern_frame(self, time_idx, pattern_type="blocks", colors=None, effects=None):
-        """Crea un frame del pattern basato sulle frequenze"""
+    def get_normalized_bands(self, time_idx):
+        """Restituisce le bande normalizzate"""
         low, mid, high = self.get_frequency_bands(time_idx)
-        
-        # Normalizza i valori
         max_val = max(low, mid, high) if max(low, mid, high) > 0 else 1
         low_norm = (low / max_val) * 0.8 + 0.2
         mid_norm = (mid / max_val) * 0.8 + 0.2
         high_norm = (high / max_val) * 0.8 + 0.2
+        return low_norm, mid_norm, high_norm
+    
+    def create_pattern_frame(self, time_idx, pattern_type="blocks", colors=None, effects=None):
+        """Crea un frame del pattern basato sulle frequenze"""
+        low_norm, mid_norm, high_norm = self.get_normalized_bands(time_idx)
         
         # Colori default se non specificati
         if colors is None:
@@ -219,6 +227,47 @@ class AudioVisualizer:
             size = (0.1 + high * 0.3) * size_mult
             ax.scatter(x, y, s=(50+high*100)*size_mult, c=colors['high'], 
                       marker='*', alpha=(0.7+high*0.3)*effects['alpha'])
+    
+    def create_video(self, output_path, pattern_type, colors, effects, duration, fps):
+        """Crea un video della visualizzazione"""
+        total_frames = int(duration * fps)
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        
+        # Crea una directory temporanea per i frame
+        temp_dir = tempfile.mkdtemp()
+        frame_paths = []
+        
+        # Genera tutti i frame
+        for frame_idx in range(total_frames):
+            # Calcola indice temporale
+            time_idx = int((frame_idx / total_frames) * self.magnitude.shape[1])
+            
+            # Crea frame
+            fig = self.create_pattern_frame(time_idx, pattern_type, colors, effects)
+            
+            # Salva il frame come immagine
+            frame_path = os.path.join(temp_dir, f"frame_{frame_idx:04d}.png")
+            fig.savefig(frame_path, dpi=100, bbox_inches='tight', pad_inches=0)
+            plt.close(fig)
+            frame_paths.append(frame_path)
+            
+            # Aggiorna progresso
+            progress = (frame_idx + 1) / total_frames
+            progress_bar.progress(progress)
+            status_text.text(f"Generando frame {frame_idx+1}/{total_frames}")
+        
+        # Crea video dai frame
+        with imageio.get_writer(output_path, fps=fps) as writer:
+            for frame_path in frame_paths:
+                image = imageio.imread(frame_path)
+                writer.append_data(image)
+                os.remove(frame_path)  # Rimuovi frame dopo l'uso
+        
+        # Rimuovi directory temporanea
+        os.rmdir(temp_dir)
+        status_text.text("✅ Video creato con successo!")
+        progress_bar.empty()
 
 # Configurazione pagina
 st.set_page_config(
@@ -237,6 +286,7 @@ def get_theme_css(is_dark_mode=True):
         .stApp { background-color: #0e1117; }
         .title { color: #00ffff; font-size: 3rem; text-align: center; font-weight: bold; margin-bottom: 2rem; text-shadow: 0 0 20px #00ffff; }
         .subtitle { color: #ff00ff; text-align: center; font-size: 1.2rem; margin-bottom: 2rem; }
+        .download-btn { background: linear-gradient(45deg, #00ffff, #ff00ff); color: white; border: none; padding: 10px 20px; border-radius: 5px; font-weight: bold; cursor: pointer; }
         </style>
         """
     else:
@@ -246,6 +296,7 @@ def get_theme_css(is_dark_mode=True):
         .stApp { background-color: #ffffff; }
         .title { color: #0066cc; font-size: 3rem; text-align: center; font-weight: bold; margin-bottom: 2rem; text-shadow: 0 0 10px #0066cc; }
         .subtitle { color: #cc0066; text-align: center; font-size: 1.2rem; margin-bottom: 2rem; }
+        .download-btn { background: linear-gradient(45deg, #0066cc, #cc0066); color: white; border: none; padding: 10px 20px; border-radius: 5px; font-weight: bold; cursor: pointer; }
         </style>
         """
 
@@ -317,6 +368,9 @@ def main():
     # Durata visualizzazione
     duration = st.sidebar.slider("Durata (secondi)", 5, 60, 20)
     
+    # Qualità video
+    video_quality = st.sidebar.selectbox("Qualità Video", ["Bassa (720p)", "Media (1080p)", "Alta (2K)"], index=1)
+    
     if uploaded_file is not None:
         with st.spinner("🎵 Caricamento e analisi audio..."):
             # Carica file audio
@@ -346,7 +400,7 @@ def main():
         st.success(f"✅ Audio caricato! Durata: {len(audio_data)/sr:.1f}s, Sample Rate: {sr}Hz")
         
         # Controlli playback
-        col1, col2, col3 = st.columns([1, 1, 1])
+        col1, col2, col3, col4 = st.columns([1, 1, 1, 1])
         
         with col1:
             if st.button("🎬 Avvia Visualizzazione"):
@@ -357,8 +411,12 @@ def main():
         
         with col3:
             st.write(f"Pattern: **{pattern_type.upper()}**")
+            
+        with col4:
+            if st.button("🎥 Crea Video", help="Genera un video della visualizzazione"):
+                st.session_state.create_video = True
         
-        # Visualizzazione
+        # Visualizzazione in tempo reale
         if 'start_viz' in st.session_state and st.session_state.start_viz:
             placeholder = st.empty()
             
@@ -385,6 +443,40 @@ def main():
             
             st.session_state.start_viz = False
             st.success("🎉 Visualizzazione completata!")
+        
+        # Creazione video
+        if 'create_video' in st.session_state and st.session_state.create_video:
+            with st.spinner("🎥 Creazione video in corso (potrebbe richiedere alcuni minuti)..."):
+                # Determina la qualità
+                quality_map = {
+                    "Bassa (720p)": (1280, 720),
+                    "Media (1080p)": (1920, 1080),
+                    "Alta (2K)": (2560, 1440)
+                }
+                width, height = quality_map[video_quality]
+                
+                # Crea file video temporaneo
+                with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as tmpfile:
+                    video_path = tmpfile.name
+                
+                # Crea il video
+                visualizer.create_video(video_path, pattern_type, colors, effects, duration, frame_rate)
+                
+                # Mostra il video e il pulsante di download
+                st.video(video_path)
+                
+                # Pulsante di download
+                with open(video_path, "rb") as f:
+                    video_bytes = f.read()
+                
+                st.download_button(
+                    label="📥 Scarica Video",
+                    data=video_bytes,
+                    file_name=f"audioline_two_{pattern_type}.mp4",
+                    mime="video/mp4"
+                )
+                
+                st.session_state.create_video = False
     
     else:
         # Schermata iniziale
@@ -402,6 +494,9 @@ def main():
         2. Scegli il tipo di pattern
         3. Avvia la visualizzazione
         
+        **Nuova Funzionalità:**
+        - **🎥 Crea Video**: Genera e scarica un video della tua visualizzazione
+        
         **Pattern disponibili:**
         - **Blocks**: Blocchi rettangolari strutturati
         - **Lines**: Linee orizzontali di spessore variabile
@@ -413,6 +508,7 @@ def main():
         - 📏 **Dimensioni** regolabili con moltiplicatore
         - 🌊 **Movimento** ondulatorio sincronizzato
         - ✨ **Effetti** glow, sfumature, modalità griglia
+        - 🎥 **Qualità video** configurabile (720p, 1080p, 2K)
         """)
         
         # Demo pattern statico

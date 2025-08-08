@@ -17,37 +17,43 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# CSS personalizzato per dark theme
-st.markdown("""
-<style>
-.main {
-    background-color: #0e1117;
-}
-.stApp {
-    background-color: #0e1117;
-}
-.title {
-    color: #00ffff;
-    font-size: 3rem;
-    text-align: center;
-    font-weight: bold;
-    margin-bottom: 2rem;
-    text-shadow: 0 0 20px #00ffff;
-}
-.subtitle {
-    color: #ff00ff;
-    text-align: center;
-    font-size: 1.2rem;
-    margin-bottom: 2rem;
-}
-</style>
-""", unsafe_allow_html=True)
+# CSS personalizzato per theme dinamico
+def get_theme_css(is_dark_mode=True):
+    if is_dark_mode:
+        return """
+        <style>
+        .main { background-color: #0e1117; }
+        .stApp { background-color: #0e1117; }
+        .title { color: #00ffff; font-size: 3rem; text-align: center; font-weight: bold; margin-bottom: 2rem; text-shadow: 0 0 20px #00ffff; }
+        .subtitle { color: #ff00ff; text-align: center; font-size: 1.2rem; margin-bottom: 2rem; }
+        </style>
+        """
+    else:
+        return """
+        <style>
+        .main { background-color: #ffffff; }
+        .stApp { background-color: #ffffff; }
+        .title { color: #0066cc; font-size: 3rem; text-align: center; font-weight: bold; margin-bottom: 2rem; text-shadow: 0 0 10px #0066cc; }
+        .subtitle { color: #cc0066; text-align: center; font-size: 1.2rem; margin-bottom: 2rem; }
+        </style>
+        """
 
-# Titolo principale
-st.markdown('<h1 class="title">🎵 AudioLineTwo</h1>', unsafe_allow_html=True)
-st.markdown('<p class="subtitle">BY LOOP507</p>', unsafe_allow_html=True)
-
-class AudioVisualizer:
+def main():
+    st.sidebar.header("🎛️ Controlli")
+    
+    # Selezione tema
+    theme_mode = st.sidebar.selectbox(
+        "🎨 Tema Interfaccia",
+        ["🌙 Dark Mode", "☀️ Light Mode"],
+        help="Scegli tema scuro o chiaro"
+    )
+    
+    is_dark = theme_mode == "🌙 Dark Mode"
+    st.markdown(get_theme_css(is_dark), unsafe_allow_html=True)
+    
+    # Titolo principale
+    st.markdown('<h1 class="title">🎵 AudioLineTwo</h1>', unsafe_allow_html=True)
+    st.markdown('<p class="subtitle">BY LOOP507</p>', unsafe_allow_html=True)
     def __init__(self, audio_data, sr, duration=30):
         self.audio_data = audio_data
         self.sr = sr
@@ -112,7 +118,7 @@ class AudioVisualizer:
         ax.set_facecolor(colors['bg'])
         
         if pattern_type == "blocks":
-            self.draw_structured_blocks(ax, low_norm, mid_norm, high_norm, colors, effects, time_idx)
+            self.draw_blocks_pattern(ax, low_norm, mid_norm, high_norm, colors, effects, time_idx)
         elif pattern_type == "lines":
             self.draw_lines_pattern(ax, low_norm, mid_norm, high_norm, colors, effects, time_idx)
             
@@ -246,6 +252,23 @@ class AudioVisualizer:
 def main():
     st.sidebar.header("🎛️ Controlli")
     
+def main():
+    st.sidebar.header("🎛️ Controlli")
+    
+    # Selezione tema
+    theme_mode = st.sidebar.selectbox(
+        "🎨 Tema Interfaccia",
+        ["🌙 Dark Mode", "☀️ Light Mode"],
+        help="Scegli tema scuro o chiaro"
+    )
+    
+    is_dark = theme_mode == "🌙 Dark Mode"
+    st.markdown(get_theme_css(is_dark), unsafe_allow_html=True)
+    
+    # Titolo principale
+    st.markdown('<h1 class="title">🎵 AudioLineTwo</h1>', unsafe_allow_html=True)
+    st.markdown('<p class="subtitle">BY LOOP507</p>', unsafe_allow_html=True)
+    
     # Upload file audio
     uploaded_file = st.sidebar.file_uploader(
         "Carica file audio",
@@ -268,7 +291,10 @@ def main():
         color_mid = st.color_picker("Freq. Medie", "#00CED1", help="Colore per frequenze medie")
     with col2:
         color_high = st.color_picker("Freq. Acute", "#40E0D0", help="Colore per frequenze acute")
-        bg_color = st.color_picker("Sfondo", "#16213e", help="Colore di sfondo")
+        if is_dark:
+            bg_color = st.color_picker("Sfondo", "#16213e", help="Colore di sfondo")
+        else:
+            bg_color = st.color_picker("Sfondo", "#f0f2f6", help="Colore di sfondo")
     
     # Controlli effetti
     st.sidebar.subheader("⚙️ Controlli Effetti")
@@ -393,8 +419,9 @@ def main():
         # Demo pattern statico
         st.markdown("### 🎨 Anteprima Pattern")
         
-        demo_fig, demo_ax = plt.subplots(figsize=(14, 8), facecolor='#16213e')
-        demo_ax.set_facecolor('#16213e')
+        demo_bg = '#16213e' if is_dark else '#f0f2f6'
+        demo_fig, demo_ax = plt.subplots(figsize=(14, 8), facecolor=demo_bg)
+        demo_ax.set_facecolor(demo_bg)
         
         # Crea demo semplice senza AudioVisualizer
         colors = ['#00BFFF', '#00CED1', '#40E0D0']

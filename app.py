@@ -203,27 +203,32 @@ class AudioVisualizer:
         return fig
 
     def draw_special_grid(self, ax, xlim, ylim):
-        """Disegna la griglia speciale con 3 colonne - MODIFICATA per linee uniformi"""
+        """Disegna la griglia speciale con 3 colonne - MODIFICATA per dimensioni linee"""
         # Linee verticali per le colonne
         ax.axvline(xlim/3, color='white', alpha=0.3, linewidth=1)
         ax.axvline(2*xlim/3, color='white', alpha=0.3, linewidth=1)
         
-        # Linee orizzontali per tutte le bande della stessa grandezza
-        # Calcola il numero totale di linee: 8 (alte) + 4 (medie) + 2 (basse) = 14 linee
-        total_lines = 14
-        for i in range(1, total_lines + 1):
-            y_pos = i * (ylim / (total_lines + 1))
-            
-            # Determina il colore in base alla posizione
-            if i <= 8:  # Alte frequenze (primi 8)
-                color = 'white'
-            elif i <= 12:  # Medie frequenze (successivi 4)
-                color = 'cyan'
-            else:  # Basse frequenze (ultimi 2)
-                color = 'red'
-            
-            # Disegna la linea per tutta la larghezza
-            ax.axhline(y_pos, xmin=0, xmax=1, color=color, alpha=0.2, linewidth=0.5)
+        # Linee orizzontali per le diverse bande
+        # Calcola spaziamento in base all'altezza totale
+        total_height = ylim
+        line_height = total_height / 15  # Altezza base per le linee
+        
+        # Frequenze alte (8 linee) - dimensione base
+        for i in range(1, 9):
+            y_pos = i * (total_height / 9)
+            ax.axhline(y_pos, xmin=0, xmax=1/3, color='white', alpha=0.2, linewidth=1)
+        
+        # Frequenze medie (4 linee) - altezza doppia
+        for i in range(1, 5):
+            y_pos = i * (total_height / 5)
+            # Calcola altezza doppia
+            ax.axhline(y_pos, xmin=1/3, xmax=2/3, color='white', alpha=0.2, linewidth=2)
+        
+        # Frequenze basse (2 linee) - altezza quadrupla
+        for i in range(1, 3):
+            y_pos = i * (total_height / 3)
+            # Calcola altezza quadrupla
+            ax.axhline(y_pos, xmin=2/3, xmax=1, color='white', alpha=0.2, linewidth=4)
     
     def draw_title(self, ax, title_settings, xlim, ylim):
         """Disegna il titolo in base alle impostazioni di posizione"""

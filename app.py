@@ -203,32 +203,39 @@ class AudioVisualizer:
         return fig
 
     def draw_special_grid(self, ax, xlim, ylim):
-        """Disegna la griglia speciale con 3 colonne - MODIFICATA per dimensioni linee"""
-        # Linee verticali per le colonne
+        """Griglia speciale con linee a spessore differenziato ma stessa lunghezza"""
+        # Linee verticali per separare le colonne
         ax.axvline(xlim/3, color='white', alpha=0.3, linewidth=1)
         ax.axvline(2*xlim/3, color='white', alpha=0.3, linewidth=1)
         
-        # Linee orizzontali per le diverse bande
-        # Calcola spaziamento in base all'altezza totale
-        total_height = ylim
-        line_height = total_height / 15  # Altezza base per le linee
+        # Impostazioni spessori
+        line_styles = [
+            (8, 0.5),  # 8 linee per alte frequenze (spessore base)
+            (4, 1.0),  # 4 linee per medie frequenze (spessore doppio)
+            (2, 2.0)   # 2 linee per basse frequenze (spessore quadruplo)
+        ]
         
-        # Frequenze alte (8 linee) - dimensione base
-        for i in range(1, 9):
-            y_pos = i * (total_height / 9)
-            ax.axhline(y_pos, xmin=0, xmax=1/3, color='white', alpha=0.2, linewidth=1)
+        # Coordinate X delle colonne
+        column_ranges = [
+            (0, xlim/3),           # Colonna 1: Alte frequenze
+            (xlim/3, 2*xlim/3),    # Colonna 2: Medie frequenze
+            (2*xlim/3, xlim)       # Colonna 3: Basse frequenze
+        ]
         
-        # Frequenze medie (4 linee) - altezza doppia
-        for i in range(1, 5):
-            y_pos = i * (total_height / 5)
-            # Calcola altezza doppia
-            ax.axhline(y_pos, xmin=1/3, xmax=2/3, color='white', alpha=0.2, linewidth=2)
-        
-        # Frequenze basse (2 linee) - altezza quadrupla
-        for i in range(1, 3):
-            y_pos = i * (total_height / 3)
-            # Calcola altezza quadrupla
-            ax.axhline(y_pos, xmin=2/3, xmax=1, color='white', alpha=0.2, linewidth=4)
+        for col_idx, (num_lines, linewidth) in enumerate(line_styles):
+            x_start, x_end = column_ranges[col_idx]
+            
+            for i in range(1, num_lines + 1):
+                y_pos = i * (ylim / (num_lines + 1))
+                
+                # Disegna la linea orizzontale per l'intera larghezza della colonna
+                ax.plot(
+                    [x_start, x_end], 
+                    [y_pos, y_pos], 
+                    color='white', 
+                    linewidth=linewidth,
+                    alpha=0.2
+                )
     
     def draw_title(self, ax, title_settings, xlim, ylim):
         """Disegna il titolo in base alle impostazioni di posizione"""

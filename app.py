@@ -14,6 +14,7 @@ from scipy.signal import find_peaks
 from scipy.io import wavfile
 from datetime import datetime
 import matplotlib.colors as mcolors
+import colorsys  # Aggiunto per la correzione
 
 # Classe AudioVisualizer migliorata
 class AudioVisualizer:
@@ -421,11 +422,11 @@ class AudioVisualizer:
             ax.plot(x, wave, color=colors['high'], linewidth=(1.5+high)*size_mult, alpha=alpha)
     
     def adjust_color_brightness(self, color, factor):
-        """Regola la luminosità di un colore"""
+        """Regola la luminosità di un colore usando colorsys"""
         r, g, b = mcolors.to_rgb(color)
-        h, l, s = mcolors.rgb_to_hls(r, g, b)
+        h, l, s = colorsys.rgb_to_hls(r, g, b)
         l = max(0, min(1, factor))
-        r, g, b = mcolors.hls_to_rgb(h, l, s)
+        r, g, b = colorsys.hls_to_rgb(h, l, s)
         return (r, g, b)
     
     def draw_vertical_lines_pattern(self, ax, low, mid, high, colors, effects, time_idx, xlim, ylim):

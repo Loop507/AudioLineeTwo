@@ -15,10 +15,11 @@ from scipy.io import wavfile
 
 # Classe AudioVisualizer
 class AudioVisualizer:
-    def __init__(self, audio_data, sr, duration=30):
+    def __init__(self, audio_data, sr, duration=None):
         self.audio_data = audio_data
         self.sr = sr
-        self.duration = min(duration, len(audio_data) / sr)
+        self.original_duration = len(audio_data) / sr
+        self.duration = min(duration, self.original_duration) if duration else self.original_duration
         self.setup_frequency_analysis()
         
     def setup_frequency_analysis(self):
@@ -35,11 +36,19 @@ class AudioVisualizer:
         )
         self.magnitude = np.abs(self.stft)
         
+        # Calcola il tempo per ogni frame
+        self.times = librosa.times_like(self.stft, sr=self.sr, hop_length=self.hop_length)
+        
         # Definisci bande di frequenza
         self.freq_bins = librosa.fft_frequencies(sr=self.sr, n_fft=self.n_fft)
         self.low_freq_idx = np.where((self.freq_bins >= 20) & (self.freq_bins <= 250))[0]
         self.mid_freq_idx = np.where((self.freq_bins >= 250) & (self.freq_bins <= 4000))[0]
         self.high_freq_idx = np.where((self.freq_bins >= 4000) & (self.freq_bins <= 20000))[0]
+        
+        # Trova il picco massimo per la normalizzazione
+        self.max_low = np.max(np.mean(self.magnitude[self.low_freq_idx, :], axis=0))
+        self.max_mid = np.max(np.mean(self.magnitude[self.mid_freq_idx, :], axis=0))
+        self.max_high = np.max(np.mean(self.magnitude[self.high_freq_idx, :], axis=0))
         
     def get_frequency_bands(self, time_idx):
         """Estrai intensità per bande di frequenza"""
@@ -55,10 +64,17 @@ class AudioVisualizer:
     def get_normalized_bands(self, time_idx):
         """Restituisce le bande normalizzate"""
         low, mid, high = self.get_frequency_bands(time_idx)
-        max_val = max(low, mid, high) if max(low, mid, high) > 0 else 1
-        low_norm = (low / max_val) * 0.8 + 0.2
-        mid_norm = (mid / max_val) * 0.8 + 0.2
-        high_norm = (high / max_val) * 0.8 + 0.2
+        
+        # Normalizza rispetto ai valori massimi
+        low_norm = low / self.max_low if self.max_low > 0 else 0
+        mid_norm = mid / self.max_mid if self.max_mid > 0 else 0
+        high_norm = high / self.max_high if self.max_high > 0 else 0
+        
+        # Applica un minimo per evitare valori troppo bassi
+        low_norm = max(low_norm, 0.1)
+        mid_norm = max(mid_norm, 0.1)
+        high_norm = max(high_norm, 0.1)
+        
         return low_norm, mid_norm, high_norm
     
     def create_pattern_frame(self, time_idx, pattern_type="blocks", colors=None, effects=None):
@@ -175,7 +191,9 @@ class AudioVisualizer:
         x = np.linspace(0, 10, 200)
         size_mult = effects['size_mult']
         movement = effects['movement']
-        time_offset = time.time() * movement
+        
+        # Usa l'indice temporale per sincronizzare le onde con la musica
+        time_offset = time_idx * 0.1
         
         # Onde basse - ampie e lente
         for i in range(3):
@@ -199,7 +217,9 @@ class AudioVisualizer:
         """Pattern geometrico misto"""
         size_mult = effects['size_mult']
         movement = effects['movement']
-        time_offset = time.time() * movement
+        
+        # Usa l'indice temporale per sincronizzare con la musica
+        time_offset = time_idx * 0.1
         
         # Cerchi grandi per basse
         for i in range(int(low * 8)):
@@ -227,9 +247,10 @@ class AudioVisualizer:
             ax.scatter(x, y, s=(50+high*100)*size_mult, c=colors['high'], 
                       marker='*', alpha=(0.7+high*0.3)*effects['alpha'])
     
-    def create_video_no_audio(self, output_path, pattern_type, colors, effects, duration, fps):
+    def create_video_no_audio(self, output_path, pattern_type, colors, effects, fps):
         """Crea un video senza audio"""
-        total_frames = int(duration * fps)
+        # Calcola il numero totale di frame
+        total_frames = int(self.duration * fps)
         progress_bar = st.progress(0)
         status_text = st.empty()
         
@@ -237,10 +258,16 @@ class AudioVisualizer:
         temp_dir = tempfile.mkdtemp()
         frame_paths = []
         
+        # Calcola il passo temporale per frame
+        time_step = self.times[-1] / total_frames
+        
         # Genera tutti i frame
         for frame_idx in range(total_frames):
-            # Calcola indice temporale
-            time_idx = int((frame_idx / total_frames) * self.magnitude.shape[1])
+            # Calcola il tempo corrente
+            current_time = frame_idx * time_step
+            
+            # Trova l'indice temporale più vicino
+            time_idx = np.argmin(np.abs(self.times - current_time))
             
             # Crea frame
             fig = self.create_pattern_frame(time_idx, pattern_type, colors, effects)
@@ -268,18 +295,18 @@ class AudioVisualizer:
         status_text.text("✅ Video senza audio creato")
         progress_bar.empty()
     
-    def create_video_with_audio(self, output_path, pattern_type, colors, effects, duration, fps):
+    def create_video_with_audio(self, output_path, pattern_type, colors, effects, fps):
         """Crea un video completo con audio"""
         # Crea un video temporaneo senza audio
         temp_video_path = output_path.replace('.mp4', '_no_audio.mp4')
-        self.create_video_no_audio(temp_video_path, pattern_type, colors, effects, duration, fps)
+        self.create_video_no_audio(temp_video_path, pattern_type, colors, effects, fps)
         
         # Crea un file audio temporaneo
         temp_audio_path = output_path.replace('.mp4', '.wav')
         
-        # Estrai l'audio corrispondente alla durata
+        # Estrai l'audio corrispondente alla durata effettiva
         start_sample = 0
-        end_sample = int(duration * self.sr)
+        end_sample = int(self.duration * self.sr)
         audio_segment = self.audio_data[start_sample:end_sample]
         
         # Normalizza e salva l'audio
@@ -296,6 +323,7 @@ class AudioVisualizer:
                 '-i', temp_audio_path,
                 '-c:v', 'copy',  # Copia il video senza ri-encodare
                 '-c:a', 'aac',   # Encodare audio in AAC
+                '-shortest',     # Termina quando il più corto dei due stream termina
                 '-strict', 'experimental',
                 output_path
             ]
@@ -408,8 +436,8 @@ def main():
     # Sfumature
     gradient_mode = st.sidebar.checkbox("Sfumature", value=True)
     
-    # Durata visualizzazione
-    duration = st.sidebar.slider("Durata (secondi)", 5, 60, 20)
+    # FPS per la visualizzazione
+    frame_rate = st.sidebar.selectbox("FPS", [10, 15, 20, 30], index=2)
     
     # Qualità video
     video_quality = st.sidebar.selectbox("Qualità Video", ["Bassa (720p)", "Media (1080p)", "Alta (2K)"], index=1)
@@ -420,8 +448,11 @@ def main():
             audio_bytes = uploaded_file.read()
             audio_data, sr = librosa.load(io.BytesIO(audio_bytes), sr=None)
             
-            # Crea visualizzatore
-            visualizer = AudioVisualizer(audio_data, sr, duration)
+            # Calcola la durata effettiva
+            duration = len(audio_data) / sr
+            
+            # Crea visualizzatore con la durata effettiva
+            visualizer = AudioVisualizer(audio_data, sr)
             
             # Prepara colori e effetti
             colors = {
@@ -440,22 +471,19 @@ def main():
                 'gradient': gradient_mode
             }
             
-        st.success(f"✅ Audio caricato! Durata: {len(audio_data)/sr:.1f}s, Sample Rate: {sr}Hz")
+        st.success(f"✅ Audio caricato! Durata: {duration:.1f}s, Sample Rate: {sr}Hz")
         
         # Controlli playback
-        col1, col2, col3, col4 = st.columns([1, 1, 1, 1])
+        col1, col2, col3 = st.columns([1, 1, 2])
         
         with col1:
             if st.button("🎬 Avvia Visualizzazione"):
                 st.session_state.start_viz = True
         
         with col2:
-            frame_rate = st.selectbox("FPS", [10, 15, 20, 30], index=2)
-        
-        with col3:
             st.write(f"Pattern: **{pattern_type.upper()}**")
             
-        with col4:
+        with col3:
             if st.button("🎥 Crea Video", help="Genera un video della visualizzazione"):
                 st.session_state.create_video = True
         
@@ -463,12 +491,18 @@ def main():
         if 'start_viz' in st.session_state and st.session_state.start_viz:
             placeholder = st.empty()
             
-            total_frames = int(duration * frame_rate)
+            total_frames = int(visualizer.duration * frame_rate)
             progress_bar = st.progress(0)
             
+            # Calcola il passo temporale per frame
+            time_step = visualizer.times[-1] / total_frames
+            
             for frame in range(total_frames):
-                # Calcola indice temporale
-                time_idx = int((frame / total_frames) * visualizer.magnitude.shape[1])
+                # Calcola il tempo corrente
+                current_time = frame * time_step
+                
+                # Trova l'indice temporale più vicino
+                time_idx = np.argmin(np.abs(visualizer.times - current_time))
                 
                 # Crea frame
                 fig = visualizer.create_pattern_frame(time_idx, pattern_type, colors, effects)
@@ -503,7 +537,7 @@ def main():
                     video_path = tmpfile.name
                 
                 # Crea il video con audio
-                success = visualizer.create_video_with_audio(video_path, pattern_type, colors, effects, duration, frame_rate)
+                success = visualizer.create_video_with_audio(video_path, pattern_type, colors, effects, frame_rate)
                 
                 if success:
                     # Mostra il video e il pulsante di download

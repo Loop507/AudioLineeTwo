@@ -12,11 +12,9 @@ import imageio
 import subprocess
 from scipy.signal import find_peaks
 from scipy.io import wavfile
-import colorsys
-import pandas as pd
-from PIL import ImageColor
+from datetime import datetime
 
-# Classe AudioVisualizer
+# Classe AudioVisualizer migliorata
 class AudioVisualizer:
     def __init__(self, audio_data, sr, duration=None):
         self.audio_data = audio_data
@@ -24,6 +22,14 @@ class AudioVisualizer:
         self.original_duration = len(audio_data) / sr
         self.duration = min(duration, self.original_duration) if duration else self.original_duration
         self.setup_frequency_analysis()
+        
+        # Nuove variabili per il tracking dei colori
+        self.color_statistics = {
+            'low_total': 0,
+            'mid_total': 0,
+            'high_total': 0,
+            'total_energy': 0
+        }
         
     def setup_frequency_analysis(self):
         """Configurazione analisi frequenze"""
@@ -48,20 +54,6 @@ class AudioVisualizer:
         self.mid_freq_idx = np.where((self.freq_bins >= 250) & (self.freq_bins <= 4000))[0]
         self.high_freq_idx = np.where((self.freq_bins >= 4000) & (self.freq_bins <= 20000))[0]
         
-        # Calcola energia totale per ogni banda
-        self.low_energy_total = np.sum(np.mean(self.magnitude[self.low_freq_idx, :], axis=0))
-        self.mid_energy_total = np.sum(np.mean(self.magnitude[self.mid_freq_idx, :], axis=0))
-        self.high_energy_total = np.sum(np.mean(self.magnitude[self.high_freq_idx, :], axis=0))
-        
-        # Calcola percentuali
-        total_energy = self.low_energy_total + self.mid_energy_total + self.high_energy_total
-        if total_energy > 0:
-            self.low_percent = (self.low_energy_total / total_energy) * 100
-            self.mid_percent = (self.mid_energy_total / total_energy) * 100
-            self.high_percent = (self.high_energy_total / total_energy) * 100
-        else:
-            self.low_percent = self.mid_percent = self.high_percent = 33.3
-            
         # Trova il picco massimo per la normalizzazione
         self.max_low = np.max(np.mean(self.magnitude[self.low_freq_idx, :], axis=0))
         self.max_mid = np.max(np.mean(self.magnitude[self.mid_freq_idx, :], axis=0))
@@ -92,16 +84,37 @@ class AudioVisualizer:
         mid_norm = max(mid_norm, 0.1)
         high_norm = max(high_norm, 0.1)
         
-        # Applica bilanciamento basato sulle percentuali totali
-        low_norm = low_norm * (self.low_percent / 33.3)
-        mid_norm = mid_norm * (self.mid_percent / 33.3)
-        high_norm = high_norm * (self.high_percent / 33.3)
-        
         return low_norm, mid_norm, high_norm
+    
+    def update_color_statistics(self, low_norm, mid_norm, high_norm):
+        """Aggiorna le statistiche sui colori per il calcolo delle percentuali"""
+        # Calcola il peso di ogni banda basato sull'energia normalizzata
+        total_frame_energy = low_norm + mid_norm + high_norm
+        
+        self.color_statistics['low_total'] += low_norm
+        self.color_statistics['mid_total'] += mid_norm  
+        self.color_statistics['high_total'] += high_norm
+        self.color_statistics['total_energy'] += total_frame_energy
+    
+    def get_color_percentages(self):
+        """Calcola le percentuali finali di utilizzo dei colori"""
+        total = self.color_statistics['total_energy']
+        
+        if total == 0:
+            return 0, 0, 0
+            
+        low_percent = (self.color_statistics['low_total'] / total) * 100
+        mid_percent = (self.color_statistics['mid_total'] / total) * 100
+        high_percent = (self.color_statistics['high_total'] / total) * 100
+        
+        return low_percent, mid_percent, high_percent
     
     def create_pattern_frame(self, time_idx, pattern_type="blocks", colors=None, effects=None):
         """Crea un frame del pattern basato sulle frequenze"""
         low_norm, mid_norm, high_norm = self.get_normalized_bands(time_idx)
+        
+        # Aggiorna statistiche colori
+        self.update_color_statistics(low_norm, mid_norm, high_norm)
         
         # Colori default se non specificati
         if colors is None:
@@ -235,7 +248,7 @@ class AudioVisualizer:
             ax.plot(x, wave, color=colors['high'], linewidth=(1.5+high)*size_mult, alpha=0.9*effects['alpha'])
     
     def draw_vertical_lines_pattern(self, ax, low, mid, high, colors, effects, time_idx):
-        """NUOVO PATTERN: Linee verticali dinamiche"""
+        """Pattern: Linee verticali dinamiche"""
         size_mult = effects['size_mult']
         movement = effects['movement']
         
@@ -273,6 +286,14 @@ class AudioVisualizer:
     
     def create_video_no_audio(self, output_path, pattern_type, colors, effects, fps):
         """Crea un video senza audio"""
+        # Reset statistiche colori
+        self.color_statistics = {
+            'low_total': 0,
+            'mid_total': 0,
+            'high_total': 0,
+            'total_energy': 0
+        }
+        
         # Calcola il numero totale di frame
         total_frames = int(self.duration * fps)
         progress_bar = st.progress(0)
@@ -318,12 +339,14 @@ class AudioVisualizer:
         os.rmdir(temp_dir)
         status_text.text("✅ Video senza audio creato")
         progress_bar.empty()
+        
+        return total_frames
     
-    def create_video_with_audio(self, output_path, pattern_type, colors, effects, fps):
-        """Crea un video completo con audio"""
+    def create_video_with_audio(self, output_path, pattern_type, colors, effects, fps, audio_filename="Unknown Track"):
+        """Crea un video completo con audio e genera report finale"""
         # Crea un video temporaneo senza audio
         temp_video_path = output_path.replace('.mp4', '_no_audio.mp4')
-        self.create_video_no_audio(temp_video_path, pattern_type, colors, effects, fps)
+        total_frames = self.create_video_no_audio(temp_video_path, pattern_type, colors, effects, fps)
         
         # Crea un file audio temporaneo
         temp_audio_path = output_path.replace('.mp4', '.wav')
@@ -352,6 +375,12 @@ class AudioVisualizer:
                 output_path
             ]
             subprocess.run(command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            
+            # Genera e mostra il report finale
+            self.show_generation_report(audio_filename, pattern_type, colors, effects, fps, total_frames)
+            
+            return True
+            
         except subprocess.CalledProcessError as e:
             st.error(f"Errore durante la combinazione audio/video: {e.stderr.decode()}")
             return False
@@ -361,8 +390,90 @@ class AudioVisualizer:
                 os.remove(temp_video_path)
             if os.path.exists(temp_audio_path):
                 os.remove(temp_audio_path)
+    
+    def show_generation_report(self, audio_filename, pattern_type, colors, effects, fps, total_frames):
+        """Mostra il report dettagliato della generazione"""
+        # Calcola le percentuali dei colori
+        low_percent, mid_percent, high_percent = self.get_color_percentages()
         
-        return True
+        # Determina risoluzione
+        quality_map = {
+            "Bassa (720p)": "1280x720",
+            "Media (1080p)": "1920x1080", 
+            "Alta (2K)": "2560x1440"
+        }
+        
+        # Mappa nomi pattern
+        pattern_names = {
+            "blocks": "Blocchi dinamici",
+            "lines": "Linee orizzontali",
+            "waves": "Onde sinusoidali",
+            "vertical": "Linee verticali"
+        }
+        
+        # Determina intensità basata sui moltiplicatori
+        if effects['size_mult'] < 0.8:
+            intensity = "Bassa"
+        elif effects['size_mult'] > 1.5:
+            intensity = "Alta"
+        else:
+            intensity = "Media"
+        
+        # Crea il report
+        report = f"""
+## 📊 Audio & Visual Settings Report
+
+**🎵 Audio Track:** {audio_filename}  
+**⏱️ Duration:** {self.duration:.1f}s  
+**🔊 Sample Rate:** {self.sr:,} Hz  
+**📺 Resolution:** 1920x1080  
+**🎨 Colors are mapped to the average energy of each frequency band, combining algorithmic analysis with a structure inspired by musical perception.**
+
+### 🌈 Color Distribution by Frequency Band:
+- **🔴 Low Frequencies (20-250Hz):** {low_percent:.1f}%
+- **🔵 Mid Frequencies (250-4000Hz):** {mid_percent:.1f}%  
+- **⚪ High Frequencies (4000-20000Hz):** {high_percent:.1f}%
+
+### ⚙️ Visual Configuration:
+- **🎭 Style:** {pattern_names.get(pattern_type, pattern_type.title())}
+- **🎨 Theme:** Custom  
+- **💪 Intensity:** {intensity}
+- **📐 Format:** 16:9 | **🎬 FPS:** {fps}
+- **🔊 Volume Offset:** 1.0
+- **🖼️ Total Frames:** ~{total_frames:,}
+
+### 🎨 Color Palette Used:
+- **Low Freq Color:** `{colors['low']}`
+- **Mid Freq Color:** `{colors['mid']}`  
+- **High Freq Color:** `{colors['high']}`
+- **Background:** `{colors['bg']}`
+
+### 🔧 Effects Applied:
+- **📏 Size Multiplier:** {effects['size_mult']}x
+- **🌊 Movement Speed:** {effects['movement']}
+- **🌟 Base Transparency:** {effects['alpha']}
+- **✨ Glow Effect:** {'✅ Enabled' if effects['glow'] else '❌ Disabled'}
+- **🔲 Grid Mode:** {'✅ Enabled' if effects['grid'] else '❌ Disabled'}
+- **🌈 Gradients:** {'✅ Enabled' if effects['gradient'] else '❌ Disabled'}
+
+---
+*Generated by **AudioLineTwo** - BY LOOP507*  
+*Timestamp: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}*
+        """
+        
+        # Mostra il report in un expander
+        with st.expander("📊 **GENERATION REPORT** - Clicca per vedere i dettagli", expanded=True):
+            st.markdown(report)
+        
+        # Anche come info success
+        st.success(f"""
+        ✅ **Video generato con successo!**
+        
+        **Distribuzione Colori:**
+        🔴 Basse: {low_percent:.1f}% | 🔵 Medie: {mid_percent:.1f}% | ⚪ Acute: {high_percent:.1f}%
+        
+        **Dettagli:** {total_frames:,} frames • {fps} FPS • {self.duration:.1f}s • Pattern: {pattern_names.get(pattern_type, pattern_type)}
+        """)
 
 # Configurazione pagina
 st.set_page_config(
@@ -382,9 +493,6 @@ def get_theme_css(is_dark_mode=True):
         .title { color: #00ffff; font-size: 3rem; text-align: center; font-weight: bold; margin-bottom: 2rem; text-shadow: 0 0 20px #00ffff; }
         .subtitle { color: #ff00ff; text-align: center; font-size: 1.2rem; margin-bottom: 2rem; }
         .download-btn { background: linear-gradient(45deg, #00ffff, #ff00ff); color: white; border: none; padding: 10px 20px; border-radius: 5px; font-weight: bold; cursor: pointer; }
-        .report-box { background-color: #1a1a2e; border-radius: 10px; padding: 20px; margin-top: 20px; }
-        .band-bar { height: 10px; border-radius: 5px; margin: 5px 0; }
-        .color-box { width: 20px; height: 20px; display: inline-block; margin-right: 5px; border: 1px solid white; border-radius: 3px; }
         </style>
         """
     else:
@@ -395,51 +503,8 @@ def get_theme_css(is_dark_mode=True):
         .title { color: #0066cc; font-size: 3rem; text-align: center; font-weight: bold; margin-bottom: 2rem; text-shadow: 0 0 10px #0066cc; }
         .subtitle { color: #cc0066; text-align: center; font-size: 1.2rem; margin-bottom: 2rem; }
         .download-btn { background: linear-gradient(45deg, #0066cc, #cc0066); color: white; border: none; padding: 10px 20px; border-radius: 5px; font-weight: bold; cursor: pointer; }
-        .report-box { background-color: #f0f2f6; border-radius: 10px; padding: 20px; margin-top: 20px; }
-        .band-bar { height: 10px; border-radius: 5px; margin: 5px 0; }
-        .color-box { width: 20px; height: 20px; display: inline-block; margin-right: 5px; border: 1px solid #333; border-radius: 3px; }
         </style>
         """
-
-def get_color_name(hex_color):
-    """Ottiene un nome descrittivo per il colore"""
-    try:
-        rgb = ImageColor.getcolor(hex_color, "RGB")
-        h, s, v = colorsys.rgb_to_hsv(rgb[0]/255, rgb[1]/255, rgb[2]/255)
-        
-        if v < 0.2:
-            return "Nero Profondo"
-        elif v > 0.9:
-            if s < 0.1: return "Bianco Puro"
-        
-        if s < 0.1:
-            if v > 0.8: return "Grigio Chiaro"
-            elif v > 0.5: return "Grigio Medio"
-            else: return "Grigio Scuro"
-        
-        if h < 0.04:  # Rosso
-            if s > 0.7: return "Rosso Intenso"
-            else: return "Rosso Pastello"
-        elif h < 0.11:  # Arancione
-            if s > 0.7: return "Arancione Vibrante"
-            else: return "Arancione Pastello"
-        elif h < 0.16:  # Giallo
-            if s > 0.7: return "Giallo Brillante"
-            else: return "Giallo Pastello"
-        elif h < 0.44:  # Verde
-            if s > 0.7: return "Verde Lussureggiante"
-            else: return "Verde Pastello"
-        elif h < 0.67:  # Blu
-            if s > 0.7: return "Blu Elettrico"
-            else: return "Blu Pastello"
-        elif h < 0.84:  # Viola
-            if s > 0.7: return "Viola Regale"
-            else: return "Viola Pastello"
-        else:  # Magenta
-            if s > 0.7: return "Magenta Neon"
-            else: return "Magenta Pastello"
-    except:
-        return "Personalizzato"
 
 def main():
     st.sidebar.header("🎛️ Controlli")
@@ -456,7 +521,7 @@ def main():
     
     # Titolo principale
     st.markdown('<h1 class="title">🎵 AudioLineTwo</h1>', unsafe_allow_html=True)
-    st.markdown('<p class="subtitle">BY LOOP507</p>', unsafe_allow_html=True)
+    st.markdown('<p class="subtitle">BY LOOP507 - Enhanced Version</p>', unsafe_allow_html=True)
     
     # Upload file audio
     uploaded_file = st.sidebar.file_uploader(
@@ -465,7 +530,7 @@ def main():
         help="Formati supportati: WAV, MP3, M4A, FLAC"
     )
     
-    # Selezione pattern (rimosso geometric, aggiunto vertical)
+    # Selezione pattern
     pattern_type = st.sidebar.selectbox(
         "Tipo di Pattern",
         ["blocks", "lines", "waves", "vertical"],
@@ -476,10 +541,10 @@ def main():
     st.sidebar.subheader("🎨 Colori Pattern")
     col1, col2 = st.sidebar.columns(2)
     with col1:
-        color_low = st.color_picker("Freq. Basse", "#00BFFF", help="Colore per frequenze basse")
-        color_mid = st.color_picker("Freq. Medie", "#00CED1", help="Colore per frequenze medie")
+        color_low = st.color_picker("Freq. Basse", "#FF0000", help="Colore per frequenze basse (20-250Hz)")
+        color_mid = st.color_picker("Freq. Medie", "#0000FF", help="Colore per frequenze medie (250-4000Hz)")
     with col2:
-        color_high = st.color_picker("Freq. Acute", "#40E0D0", help="Colore per frequenze acute")
+        color_high = st.color_picker("Freq. Acute", "#FFFFFF", help="Colore per frequenze acute (4000-20000Hz)")
         if is_dark:
             bg_color = st.color_picker("Sfondo", "#16213e", help="Colore di sfondo")
         else:
@@ -606,8 +671,13 @@ def main():
                 with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as tmpfile:
                     video_path = tmpfile.name
                 
+                # Ottieni il nome del file audio per il report
+                audio_filename = uploaded_file.name if uploaded_file.name else "Unknown Track"
+                
                 # Crea il video con audio
-                success = visualizer.create_video_with_audio(video_path, pattern_type, colors, effects, frame_rate)
+                success = visualizer.create_video_with_audio(
+                    video_path, pattern_type, colors, effects, frame_rate, audio_filename
+                )
                 
                 if success:
                     # Mostra il video e il pulsante di download
@@ -620,51 +690,9 @@ def main():
                     st.download_button(
                         label="📥 Scarica Video con Audio",
                         data=video_bytes,
-                        file_name=f"audioline_two_{pattern_type}.mp4",
+                        file_name=f"audioline_two_{pattern_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4",
                         mime="video/mp4"
                     )
-                    
-                    # Report finale
-                    st.markdown(f"""
-                    <div class="report-box">
-                        <h3>🎚️ Audio & Visual Settings</h3>
-                        <p><strong>Audio Track:</strong> {uploaded_file.name}<br>
-                        <strong>Duration:</strong> {duration:.1f}s<br>
-                        <strong>Sample Rate:</strong> {sr} Hz<br>
-                        <strong>Resolution:</strong> {width}x{height}</p>
-                        
-                        <p>Colors are mapped to the average energy of each frequency band, combining algorithmic analysis with a structure inspired by musical perception.</p>
-                        
-                        <h4>🎨 Color Distribution by Frequency Band:</h4>
-                        <div style="margin-bottom: 10px;">
-                            <div class="color-box" style="background-color: {color_low};"></div>
-                            <strong>Low ({get_color_name(color_low)}):</strong> {visualizer.low_percent:.1f}%
-                            <div class="band-bar" style="width: {visualizer.low_percent}%; background: linear-gradient(90deg, {color_low}, {color_low}66);"></div>
-                        </div>
-                        
-                        <div style="margin-bottom: 10px;">
-                            <div class="color-box" style="background-color: {color_mid};"></div>
-                            <strong>Mid ({get_color_name(color_mid)}):</strong> {visualizer.mid_percent:.1f}%
-                            <div class="band-bar" style="width: {visualizer.mid_percent}%; background: linear-gradient(90deg, {color_mid}, {color_mid}66);"></div>
-                        </div>
-                        
-                        <div style="margin-bottom: 10px;">
-                            <div class="color-box" style="background-color: {color_high};"></div>
-                            <strong>High ({get_color_name(color_high)}):</strong> {visualizer.high_percent:.1f}%
-                            <div class="band-bar" style="width: {visualizer.high_percent}%; background: linear-gradient(90deg, {color_high}, {color_high}66);"></div>
-                        </div>
-                        
-                        <h4>🎬 Visual Config:</h4>
-                        <p>
-                        <strong>Style:</strong> {pattern_type}<br>
-                        <strong>Theme:</strong> Custom<br>
-                        <strong>Intensity:</strong> {size_multiplier:.1f} (Size Multiplier)<br>
-                        <strong>Format:</strong> 16:9 | FPS: {frame_rate}<br>
-                        <strong>Volume Offset:</strong> 1.0<br>
-                        <strong>Total Frames:</strong> ~{int(duration * frame_rate)}
-                        </p>
-                    </div>
-                    """, unsafe_allow_html=True)
                 else:
                     st.error("Errore nella creazione del video. Controlla i log per maggiori dettagli.")
                 
@@ -674,22 +702,24 @@ def main():
     else:
         # Schermata iniziale
         st.markdown("""
-        ### 🎵 Benvenuto in AudioLineTwo!
+        ### 🎵 Benvenuto in AudioLineTwo Enhanced!
         
         Questa applicazione crea pattern visivi dinamici basati sulle frequenze audio:
         
-        - **🔊 Frequenze Basse** → Pattern grandi e spessi
-        - **🎸 Frequenze Medie** → Pattern di dimensione media  
-        - **🎼 Frequenze Acute** → Pattern piccoli e sottili
+        - **🔊 Frequenze Basse (20-250Hz)** → Pattern grandi e spessi
+        - **🎸 Frequenze Medie (250-4000Hz)** → Pattern di dimensione media  
+        - **🎼 Frequenze Acute (4000-20000Hz)** → Pattern piccoli e sottili
+        
+        **🆕 Nuove Funzionalità:**
+        - **📊 Calcolo accurato percentuali colori** per ogni banda di frequenza
+        - **📋 Report dettagliato finale** con tutte le statistiche del video
+        - **🎨 Migliore analisi della distribuzione energetica** 
         
         **Come usare:**
         1. Carica un file audio dalla sidebar
-        2. Scegli il tipo di pattern
-        3. Avvia la visualizzazione
-        
-        **Nuova Funzionalità:**
-        - **🎥 Crea Video**: Genera e scarica un video della tua visualizzazione con audio
-        - **📊 Report Dettagliato**: Ottieni un resoconto completo delle impostazioni usate
+        2. Scegli il tipo di pattern e personalizza i colori
+        3. Configura gli effetti e la qualità
+        4. Crea il video per vedere il report completo!
         
         **Pattern disponibili:**
         - **Blocks**: Blocchi rettangolari strutturati
@@ -697,12 +727,11 @@ def main():
         - **Waves**: Forme ondulatorie dinamiche che riempiono tutto lo schermo
         - **Vertical**: Linee verticali con effetto pulviscolo
         
-        **Controlli avanzati:**
-        - 🎨 **Colori personalizzati** per ogni banda di frequenza
-        - 📏 **Dimensioni** regolabili con moltiplicatore
-        - 🌊 **Movimento** ondulatorio sincronizzato
-        - ✨ **Effetti** glow, sfumature, modalità griglia
-        - 🎥 **Qualità video** configurabile (720p, 1080p, 2K)
+        **📊 Il report finale includerà:**
+        - Distribuzione percentuale precisa dei colori utilizzati
+        - Statistiche complete dell'audio (durata, sample rate, etc.)
+        - Dettagli della configurazione visiva utilizzata
+        - Informazioni sui frame generati e impostazioni FPS
         """)
         
         # Demo pattern statico
@@ -713,7 +742,7 @@ def main():
         demo_ax.set_facecolor(demo_bg)
         
         # Crea demo semplice senza AudioVisualizer
-        colors = ['#00BFFF', '#00CED1', '#40E0D0']
+        colors = ['#FF0000', '#0000FF', '#FFFFFF']
         
         # Griglia demo 6x8
         for row in range(6):

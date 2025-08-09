@@ -103,8 +103,8 @@ class AudioVisualizer:
             self.draw_lines_pattern(ax, low_norm, mid_norm, high_norm, colors, effects, time_idx)
         elif pattern_type == "waves":
             self.draw_waves_pattern(ax, low_norm, mid_norm, high_norm, colors, effects, time_idx)
-        elif pattern_type == "geometric":
-            self.draw_geometric_pattern(ax, low_norm, mid_norm, high_norm, colors, effects, time_idx)
+        elif pattern_type == "vertical":
+            self.draw_vertical_lines_pattern(ax, low_norm, mid_norm, high_norm, colors, effects, time_idx)
             
         ax.set_xlim(0, 16)
         ax.set_ylim(0, 10)
@@ -187,65 +187,67 @@ class AudioVisualizer:
                    color=colors['high'], linewidth=(1+high)*size_mult, alpha=0.8*effects['alpha'])
     
     def draw_waves_pattern(self, ax, low, mid, high, colors, effects, time_idx):
-        """Pattern ondulatorio"""
-        x = np.linspace(0, 10, 200)
+        """Pattern ondulatorio - CORRETTO per riempire tutto lo schermo"""
+        x = np.linspace(0, 16, 300)  # Esteso a 16 per riempire tutta la larghezza
         size_mult = effects['size_mult']
-        movement = effects['movement']
         
         # Usa l'indice temporale per sincronizzare le onde con la musica
         time_offset = time_idx * 0.1
         
-        # Onde basse - ampie e lente
+        # Onde basse - ampie e lente (coprono tutto lo schermo)
         for i in range(3):
-            y_offset = 2 + i * 2
-            wave = y_offset + low * np.sin(2 * np.pi * (0.5 + i * 0.3) * x + time_offset)
-            ax.plot(x, wave, color=colors['low'], linewidth=5*low*size_mult, alpha=0.7*effects['alpha'])
+            y_offset = 2 + i * 2.5  # Spaziate verticalmente
+            wave = y_offset + low * np.sin(2 * np.pi * (0.3 + i * 0.2) * x + time_offset)
+            ax.plot(x, wave, color=colors['low'], linewidth=6*low*size_mult, alpha=0.8*effects['alpha'])
         
         # Onde medie
         for i in range(4):
-            y_offset = 1.5 + i * 1.5
-            wave = y_offset + mid * 0.7 * np.sin(2 * np.pi * (1 + i * 0.5) * x + time_offset)
-            ax.plot(x, wave, color=colors['mid'], linewidth=3*mid*size_mult, alpha=0.6*effects['alpha'])
+            y_offset = 1.5 + i * 1.8
+            wave = y_offset + mid * 0.8 * np.sin(2 * np.pi * (0.8 + i * 0.4) * x + time_offset)
+            ax.plot(x, wave, color=colors['mid'], linewidth=4*mid*size_mult, alpha=0.7*effects['alpha'])
         
         # Onde acute - rapide e piccole
-        for i in range(6):
-            y_offset = 1 + i * 1.2
-            wave = y_offset + high * 0.5 * np.sin(2 * np.pi * (2 + i * 0.8) * x + time_offset)
-            ax.plot(x, wave, color=colors['high'], linewidth=(1+high)*size_mult, alpha=0.8*effects['alpha'])
+        for i in range(5):
+            y_offset = 1 + i * 1.5
+            wave = y_offset + high * 0.6 * np.sin(2 * np.pi * (1.5 + i * 0.6) * x + time_offset)
+            ax.plot(x, wave, color=colors['high'], linewidth=(1.5+high)*size_mult, alpha=0.9*effects['alpha'])
     
-    def draw_geometric_pattern(self, ax, low, mid, high, colors, effects, time_idx):
-        """Pattern geometrico misto"""
+    def draw_vertical_lines_pattern(self, ax, low, mid, high, colors, effects, time_idx):
+        """NUOVO PATTERN: Linee verticali dinamiche"""
         size_mult = effects['size_mult']
         movement = effects['movement']
         
-        # Usa l'indice temporale per sincronizzare con la musica
-        time_offset = time_idx * 0.1
+        # Linee spesse per basse frequenze
+        for i in range(int(low * 12)):
+            x = np.random.uniform(0, 16)
+            height = np.random.uniform(1, 8) * low
+            y_start = np.random.uniform(0, 10 - height)
+            ax.plot([x, x], [y_start, y_start + height], 
+                   color=colors['low'], linewidth=6*low*size_mult, alpha=0.7*effects['alpha'])
         
-        # Cerchi grandi per basse
-        for i in range(int(low * 8)):
-            x = np.random.uniform(1, 9)
-            y = np.random.uniform(1, 7)
-            radius = (0.3 + low * 0.8) * size_mult
-            circle = plt.Circle((x, y), radius, 
-                              color=colors['low'], alpha=(0.3+low*0.4)*effects['alpha'], fill=True)
-            ax.add_patch(circle)
+        # Linee medie per frequenze medie
+        for i in range(int(mid * 18)):
+            x = np.random.uniform(0, 16)
+            height = np.random.uniform(1, 6) * mid
+            y_start = np.random.uniform(0, 10 - height)
+            ax.plot([x, x], [y_start, y_start + height], 
+                   color=colors['mid'], linewidth=3*mid*size_mult, alpha=0.8*effects['alpha'])
         
-        # Triangoli per medie
-        for i in range(int(mid * 12)):
-            x = np.random.uniform(1, 9)
-            y = np.random.uniform(1, 7)
-            size = (0.2 + mid * 0.6) * size_mult
-            triangle = np.array([[x, y+size], [x-size, y-size], [x+size, y-size]])
-            ax.plot(triangle[:, 0], triangle[:, 1], 
-                   color=colors['mid'], linewidth=(2+mid*3)*size_mult, alpha=0.6*effects['alpha'])
+        # Linee sottili per alte frequenze
+        for i in range(int(high * 25)):
+            x = np.random.uniform(0, 16)
+            height = np.random.uniform(1, 4) * high
+            y_start = np.random.uniform(0, 10 - height)
+            ax.plot([x, x], [y_start, y_start + height], 
+                   color=colors['high'], linewidth=(1+high)*size_mult, alpha=0.9*effects['alpha'])
         
-        # Stelle piccole per acute
-        for i in range(int(high * 20)):
-            x = np.random.uniform(1, 9)
-            y = np.random.uniform(1, 7)
+        # Effetto pulviscolo per le alte frequenze
+        for i in range(int(high * 50)):
+            x = np.random.uniform(0, 16)
+            y = np.random.uniform(0, 10)
             size = (0.1 + high * 0.3) * size_mult
-            ax.scatter(x, y, s=(50+high*100)*size_mult, c=colors['high'], 
-                      marker='*', alpha=(0.7+high*0.3)*effects['alpha'])
+            ax.scatter(x, y, s=(10+high*50)*size_mult, c=colors['high'], 
+                      marker='o', alpha=(0.6+high*0.3)*effects['alpha'])
     
     def create_video_no_audio(self, output_path, pattern_type, colors, effects, fps):
         """Crea un video senza audio"""
@@ -395,10 +397,10 @@ def main():
         help="Formati supportati: WAV, MP3, M4A, FLAC"
     )
     
-    # Selezione pattern
+    # Selezione pattern (rimosso geometric, aggiunto vertical)
     pattern_type = st.sidebar.selectbox(
         "Tipo di Pattern",
-        ["blocks", "lines", "waves", "geometric"],
+        ["blocks", "lines", "waves", "vertical"],
         help="Scegli il tipo di visualizzazione"
     )
     
@@ -581,8 +583,8 @@ def main():
         **Pattern disponibili:**
         - **Blocks**: Blocchi rettangolari strutturati
         - **Lines**: Linee orizzontali di spessore variabile
-        - **Waves**: Forme ondulatorie dinamiche
-        - **Geometric**: Figure geometriche (cerchi, triangoli, stelle)
+        - **Waves**: Forme ondulatorie dinamiche che riempiono tutto lo schermo
+        - **Vertical**: Linee verticali con effetto pulviscolo
         
         **Controlli avanzati:**
         - 🎨 **Colori personalizzati** per ogni banda di frequenza

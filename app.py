@@ -148,14 +148,14 @@ class AudioVisualizer:
         return fig
     
     def draw_blocks_pattern(self, ax, low, mid, high, colors, effects, time_idx):
-        """Pattern a blocchi colorati"""
+        """Pattern a blocchi colorati - CORRETTO per tutto lo schermo"""
         # Applica moltiplicatore dimensione
         size_mult = effects['size_mult']
         
-        # Blocchi grandi per frequenze basse
+        # Blocchi grandi per frequenze basse - ESTESI A TUTTO LO SCHERMO
         for i in range(int(low * 15)):
-            x = np.random.uniform(0, 10)
-            y = np.random.uniform(0, 8)
+            x = np.random.uniform(0, 16)  # Da 0 a 16 invece di 0 a 10
+            y = np.random.uniform(0, 10)  # Da 0 a 10 invece di 0 a 8
             width = np.random.uniform(0.5, 2.0) * low * size_mult
             height = np.random.uniform(0.3, 1.5) * low * size_mult
             color = colors['low']
@@ -165,10 +165,10 @@ class AudioVisualizer:
                            facecolor=color, alpha=alpha, edgecolor='none')
             ax.add_patch(rect)
         
-        # Blocchi medi per frequenze medie
+        # Blocchi medi per frequenze medie - ESTESI A TUTTO LO SCHERMO
         for i in range(int(mid * 25)):
-            x = np.random.uniform(0, 10)
-            y = np.random.uniform(0, 8)
+            x = np.random.uniform(0, 16)  # Da 0 a 16 invece di 0 a 10
+            y = np.random.uniform(0, 10)  # Da 0 a 10 invece di 0 a 8
             width = np.random.uniform(0.2, 1.0) * mid * size_mult
             height = np.random.uniform(0.2, 1.0) * mid * size_mult
             color = colors['mid']
@@ -178,10 +178,10 @@ class AudioVisualizer:
                            facecolor=color, alpha=alpha, edgecolor='none')
             ax.add_patch(rect)
         
-        # Blocchi piccoli per frequenze alte
+        # Blocchi piccoli per frequenze alte - ESTESI A TUTTO LO SCHERMO
         for i in range(int(high * 40)):
-            x = np.random.uniform(0, 10)
-            y = np.random.uniform(0, 8)
+            x = np.random.uniform(0, 16)  # Da 0 a 16 invece di 0 a 10
+            y = np.random.uniform(0, 10)  # Da 0 a 10 invece di 0 a 8
             width = np.random.uniform(0.1, 0.5) * high * size_mult
             height = np.random.uniform(0.1, 0.5) * high * size_mult
             color = colors['high']
@@ -192,32 +192,35 @@ class AudioVisualizer:
             ax.add_patch(rect)
     
     def draw_lines_pattern(self, ax, low, mid, high, colors, effects, time_idx):
-        """Pattern di linee orizzontali"""
+        """Pattern di linee orizzontali - CORRETTO per tutto lo schermo"""
         # Applica moltiplicatore dimensione
         size_mult = effects['size_mult']
         movement = effects['movement']
         
-        # Linee spesse per basse
+        # Linee spesse per basse - ESTESE A TUTTO LO SCHERMO
         for i in range(int(low * 8)):
-            y = np.random.uniform(1, 7)
-            x_start = np.random.uniform(0, 3)
-            x_end = x_start + np.random.uniform(2, 7) * low * size_mult
+            y = np.random.uniform(1, 9)  # Da 1 a 9 invece di 1 a 7
+            x_start = np.random.uniform(0, 4)
+            x_end = x_start + np.random.uniform(4, 12) * low * size_mult  # Linee più lunghe
+            x_end = min(x_end, 16)  # Non superare il bordo destro
             ax.plot([x_start, x_end], [y, y], 
                    color=colors['low'], linewidth=8*low*size_mult, alpha=0.7*effects['alpha'])
         
-        # Linee medie
+        # Linee medie - ESTESE A TUTTO LO SCHERMO
         for i in range(int(mid * 12)):
-            y = np.random.uniform(1, 7)
-            x_start = np.random.uniform(0, 4)
-            x_end = x_start + np.random.uniform(1, 5) * mid * size_mult
+            y = np.random.uniform(1, 9)  # Da 1 a 9 invece di 1 a 7
+            x_start = np.random.uniform(0, 6)
+            x_end = x_start + np.random.uniform(3, 10) * mid * size_mult  # Linee più lunghe
+            x_end = min(x_end, 16)  # Non superare il bordo destro
             ax.plot([x_start, x_end], [y, y], 
                    color=colors['mid'], linewidth=4*mid*size_mult, alpha=0.6*effects['alpha'])
         
-        # Linee sottili per acute
+        # Linee sottili per acute - ESTESE A TUTTO LO SCHERMO
         for i in range(int(high * 20)):
-            y = np.random.uniform(1, 7)
-            x_start = np.random.uniform(0, 5)
-            x_end = x_start + np.random.uniform(0.5, 3) * high * size_mult
+            y = np.random.uniform(1, 9)  # Da 1 a 9 invece di 1 a 7
+            x_start = np.random.uniform(0, 8)
+            x_end = x_start + np.random.uniform(2, 8) * high * size_mult  # Linee più lunghe
+            x_end = min(x_end, 16)  # Non superare il bordo destro
             ax.plot([x_start, x_end], [y, y], 
                    color=colors['high'], linewidth=(1+high)*size_mult, alpha=0.8*effects['alpha'])
     
@@ -235,15 +238,15 @@ class AudioVisualizer:
             wave = y_offset + low * np.sin(2 * np.pi * (0.3 + i * 0.2) * x + time_offset)
             ax.plot(x, wave, color=colors['low'], linewidth=6*low*size_mult, alpha=0.8*effects['alpha'])
         
-        # Onde medie
+        # Onde medie - MIGLIORATE per coprire tutto lo schermo
         for i in range(4):
-            y_offset = 1.5 + i * 1.8
+            y_offset = 1.5 + i * 2.0  # Spaziate meglio verticalmente
             wave = y_offset + mid * 0.8 * np.sin(2 * np.pi * (0.8 + i * 0.4) * x + time_offset)
             ax.plot(x, wave, color=colors['mid'], linewidth=4*mid*size_mult, alpha=0.7*effects['alpha'])
         
-        # Onde acute - rapide e piccole
+        # Onde acute - rapide e piccole - MIGLIORATE
         for i in range(5):
-            y_offset = 1 + i * 1.5
+            y_offset = 1 + i * 1.8  # Spaziate meglio verticalmente
             wave = y_offset + high * 0.6 * np.sin(2 * np.pi * (1.5 + i * 0.6) * x + time_offset)
             ax.plot(x, wave, color=colors['high'], linewidth=(1.5+high)*size_mult, alpha=0.9*effects['alpha'])
     
@@ -442,12 +445,6 @@ class AudioVisualizer:
 - **🔊 Volume Offset:** 1.0
 - **🖼️ Total Frames:** ~{total_frames:,}
 
-### 🎨 Color Palette Used:
-- **Low Freq Color:** `{colors['low']}`
-- **Mid Freq Color:** `{colors['mid']}`  
-- **High Freq Color:** `{colors['high']}`
-- **Background:** `{colors['bg']}`
-
 ### 🔧 Effects Applied:
 - **📏 Size Multiplier:** {effects['size_mult']}x
 - **🌊 Movement Speed:** {effects['movement']}
@@ -509,19 +506,11 @@ def get_theme_css(is_dark_mode=True):
 def main():
     st.sidebar.header("🎛️ Controlli")
     
-    # Selezione tema
-    theme_mode = st.sidebar.selectbox(
-        "🎨 Tema Interfaccia",
-        ["🌙 Dark Mode", "☀️ Light Mode"],
-        help="Scegli tema scuro o chiaro"
-    )
-    
-    is_dark = theme_mode == "🌙 Dark Mode"
-    st.markdown(get_theme_css(is_dark), unsafe_allow_html=True)
+    # Usa interfaccia normale (senza CSS personalizzato)
     
     # Titolo principale
-    st.markdown('<h1 class="title">🎵 AudioLineTwo</h1>', unsafe_allow_html=True)
-    st.markdown('<p class="subtitle">BY LOOP507 - Enhanced Version</p>', unsafe_allow_html=True)
+    st.markdown("# 🎵 AudioLineTwo")
+    st.markdown("**BY LOOP507 - Enhanced Version**")
     
     # Upload file audio
     uploaded_file = st.sidebar.file_uploader(
@@ -545,10 +534,7 @@ def main():
         color_mid = st.color_picker("Freq. Medie", "#0000FF", help="Colore per frequenze medie (250-4000Hz)")
     with col2:
         color_high = st.color_picker("Freq. Acute", "#FFFFFF", help="Colore per frequenze acute (4000-20000Hz)")
-        if is_dark:
-            bg_color = st.color_picker("Sfondo", "#16213e", help="Colore di sfondo")
-        else:
-            bg_color = st.color_picker("Sfondo", "#f0f2f6", help="Colore di sfondo")
+        bg_color = st.color_picker("Sfondo", "#000000", help="Colore di sfondo")
     
     # Controlli effetti
     st.sidebar.subheader("⚙️ Controlli Effetti")
@@ -737,7 +723,7 @@ def main():
         # Demo pattern statico
         st.markdown("### 🎨 Anteprima Pattern")
         
-        demo_bg = '#16213e' if is_dark else '#f0f2f6'
+        demo_bg = '#000000'
         demo_fig, demo_ax = plt.subplots(figsize=(14, 8), facecolor=demo_bg)
         demo_ax.set_facecolor(demo_bg)
         

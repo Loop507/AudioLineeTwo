@@ -12,6 +12,9 @@ import imageio
 import subprocess
 from scipy.signal import find_peaks
 from scipy.io import wavfile
+import colorsys
+import pandas as pd
+from PIL import ImageColor
 
 # Classe AudioVisualizer
 class AudioVisualizer:
@@ -45,6 +48,20 @@ class AudioVisualizer:
         self.mid_freq_idx = np.where((self.freq_bins >= 250) & (self.freq_bins <= 4000))[0]
         self.high_freq_idx = np.where((self.freq_bins >= 4000) & (self.freq_bins <= 20000))[0]
         
+        # Calcola energia totale per ogni banda
+        self.low_energy_total = np.sum(np.mean(self.magnitude[self.low_freq_idx, :], axis=0))
+        self.mid_energy_total = np.sum(np.mean(self.magnitude[self.mid_freq_idx, :], axis=0))
+        self.high_energy_total = np.sum(np.mean(self.magnitude[self.high_freq_idx, :], axis=0))
+        
+        # Calcola percentuali
+        total_energy = self.low_energy_total + self.mid_energy_total + self.high_energy_total
+        if total_energy > 0:
+            self.low_percent = (self.low_energy_total / total_energy) * 100
+            self.mid_percent = (self.mid_energy_total / total_energy) * 100
+            self.high_percent = (self.high_energy_total / total_energy) * 100
+        else:
+            self.low_percent = self.mid_percent = self.high_percent = 33.3
+            
         # Trova il picco massimo per la normalizzazione
         self.max_low = np.max(np.mean(self.magnitude[self.low_freq_idx, :], axis=0))
         self.max_mid = np.max(np.mean(self.magnitude[self.mid_freq_idx, :], axis=0))
@@ -74,6 +91,11 @@ class AudioVisualizer:
         low_norm = max(low_norm, 0.1)
         mid_norm = max(mid_norm, 0.1)
         high_norm = max(high_norm, 0.1)
+        
+        # Applica bilanciamento basato sulle percentuali totali
+        low_norm = low_norm * (self.low_percent / 33.3)
+        mid_norm = mid_norm * (self.mid_percent / 33.3)
+        high_norm = high_norm * (self.high_percent / 33.3)
         
         return low_norm, mid_norm, high_norm
     
@@ -360,6 +382,9 @@ def get_theme_css(is_dark_mode=True):
         .title { color: #00ffff; font-size: 3rem; text-align: center; font-weight: bold; margin-bottom: 2rem; text-shadow: 0 0 20px #00ffff; }
         .subtitle { color: #ff00ff; text-align: center; font-size: 1.2rem; margin-bottom: 2rem; }
         .download-btn { background: linear-gradient(45deg, #00ffff, #ff00ff); color: white; border: none; padding: 10px 20px; border-radius: 5px; font-weight: bold; cursor: pointer; }
+        .report-box { background-color: #1a1a2e; border-radius: 10px; padding: 20px; margin-top: 20px; }
+        .band-bar { height: 10px; border-radius: 5px; margin: 5px 0; }
+        .color-box { width: 20px; height: 20px; display: inline-block; margin-right: 5px; border: 1px solid white; border-radius: 3px; }
         </style>
         """
     else:
@@ -370,8 +395,51 @@ def get_theme_css(is_dark_mode=True):
         .title { color: #0066cc; font-size: 3rem; text-align: center; font-weight: bold; margin-bottom: 2rem; text-shadow: 0 0 10px #0066cc; }
         .subtitle { color: #cc0066; text-align: center; font-size: 1.2rem; margin-bottom: 2rem; }
         .download-btn { background: linear-gradient(45deg, #0066cc, #cc0066); color: white; border: none; padding: 10px 20px; border-radius: 5px; font-weight: bold; cursor: pointer; }
+        .report-box { background-color: #f0f2f6; border-radius: 10px; padding: 20px; margin-top: 20px; }
+        .band-bar { height: 10px; border-radius: 5px; margin: 5px 0; }
+        .color-box { width: 20px; height: 20px; display: inline-block; margin-right: 5px; border: 1px solid #333; border-radius: 3px; }
         </style>
         """
+
+def get_color_name(hex_color):
+    """Ottiene un nome descrittivo per il colore"""
+    try:
+        rgb = ImageColor.getcolor(hex_color, "RGB")
+        h, s, v = colorsys.rgb_to_hsv(rgb[0]/255, rgb[1]/255, rgb[2]/255)
+        
+        if v < 0.2:
+            return "Nero Profondo"
+        elif v > 0.9:
+            if s < 0.1: return "Bianco Puro"
+        
+        if s < 0.1:
+            if v > 0.8: return "Grigio Chiaro"
+            elif v > 0.5: return "Grigio Medio"
+            else: return "Grigio Scuro"
+        
+        if h < 0.04:  # Rosso
+            if s > 0.7: return "Rosso Intenso"
+            else: return "Rosso Pastello"
+        elif h < 0.11:  # Arancione
+            if s > 0.7: return "Arancione Vibrante"
+            else: return "Arancione Pastello"
+        elif h < 0.16:  # Giallo
+            if s > 0.7: return "Giallo Brillante"
+            else: return "Giallo Pastello"
+        elif h < 0.44:  # Verde
+            if s > 0.7: return "Verde Lussureggiante"
+            else: return "Verde Pastello"
+        elif h < 0.67:  # Blu
+            if s > 0.7: return "Blu Elettrico"
+            else: return "Blu Pastello"
+        elif h < 0.84:  # Viola
+            if s > 0.7: return "Viola Regale"
+            else: return "Viola Pastello"
+        else:  # Magenta
+            if s > 0.7: return "Magenta Neon"
+            else: return "Magenta Pastello"
+    except:
+        return "Personalizzato"
 
 def main():
     st.sidebar.header("🎛️ Controlli")
@@ -555,6 +623,48 @@ def main():
                         file_name=f"audioline_two_{pattern_type}.mp4",
                         mime="video/mp4"
                     )
+                    
+                    # Report finale
+                    st.markdown(f"""
+                    <div class="report-box">
+                        <h3>🎚️ Audio & Visual Settings</h3>
+                        <p><strong>Audio Track:</strong> {uploaded_file.name}<br>
+                        <strong>Duration:</strong> {duration:.1f}s<br>
+                        <strong>Sample Rate:</strong> {sr} Hz<br>
+                        <strong>Resolution:</strong> {width}x{height}</p>
+                        
+                        <p>Colors are mapped to the average energy of each frequency band, combining algorithmic analysis with a structure inspired by musical perception.</p>
+                        
+                        <h4>🎨 Color Distribution by Frequency Band:</h4>
+                        <div style="margin-bottom: 10px;">
+                            <div class="color-box" style="background-color: {color_low};"></div>
+                            <strong>Low ({get_color_name(color_low)}):</strong> {visualizer.low_percent:.1f}%
+                            <div class="band-bar" style="width: {visualizer.low_percent}%; background: linear-gradient(90deg, {color_low}, {color_low}66);"></div>
+                        </div>
+                        
+                        <div style="margin-bottom: 10px;">
+                            <div class="color-box" style="background-color: {color_mid};"></div>
+                            <strong>Mid ({get_color_name(color_mid)}):</strong> {visualizer.mid_percent:.1f}%
+                            <div class="band-bar" style="width: {visualizer.mid_percent}%; background: linear-gradient(90deg, {color_mid}, {color_mid}66);"></div>
+                        </div>
+                        
+                        <div style="margin-bottom: 10px;">
+                            <div class="color-box" style="background-color: {color_high};"></div>
+                            <strong>High ({get_color_name(color_high)}):</strong> {visualizer.high_percent:.1f}%
+                            <div class="band-bar" style="width: {visualizer.high_percent}%; background: linear-gradient(90deg, {color_high}, {color_high}66);"></div>
+                        </div>
+                        
+                        <h4>🎬 Visual Config:</h4>
+                        <p>
+                        <strong>Style:</strong> {pattern_type}<br>
+                        <strong>Theme:</strong> Custom<br>
+                        <strong>Intensity:</strong> {size_multiplier:.1f} (Size Multiplier)<br>
+                        <strong>Format:</strong> 16:9 | FPS: {frame_rate}<br>
+                        <strong>Volume Offset:</strong> 1.0<br>
+                        <strong>Total Frames:</strong> ~{int(duration * frame_rate)}
+                        </p>
+                    </div>
+                    """, unsafe_allow_html=True)
                 else:
                     st.error("Errore nella creazione del video. Controlla i log per maggiori dettagli.")
                 
@@ -579,6 +689,7 @@ def main():
         
         **Nuova Funzionalità:**
         - **🎥 Crea Video**: Genera e scarica un video della tua visualizzazione con audio
+        - **📊 Report Dettagliato**: Ottieni un resoconto completo delle impostazioni usate
         
         **Pattern disponibili:**
         - **Blocks**: Blocchi rettangolari strutturati

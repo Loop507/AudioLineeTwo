@@ -13,6 +13,7 @@ import subprocess
 from scipy.signal import find_peaks
 from scipy.io import wavfile
 from datetime import datetime
+import matplotlib.colors as mcolors
 
 # Classe AudioVisualizer migliorata
 class AudioVisualizer:
@@ -419,60 +420,87 @@ class AudioVisualizer:
             
             ax.plot(x, wave, color=colors['high'], linewidth=(1.5+high)*size_mult, alpha=alpha)
     
+    def adjust_color_brightness(self, color, factor):
+        """Regola la luminosità di un colore"""
+        r, g, b = mcolors.to_rgb(color)
+        h, l, s = mcolors.rgb_to_hls(r, g, b)
+        l = max(0, min(1, factor))
+        r, g, b = mcolors.hls_to_rgb(h, l, s)
+        return (r, g, b)
+    
     def draw_vertical_lines_pattern(self, ax, low, mid, high, colors, effects, time_idx, xlim, ylim):
-        """Pattern: Linee verticali dinamiche - SENZA PALLINI"""
-        size_mult = effects['size_mult']
+        """Pattern: VU-meter a colonne con barre orizzontali progressivo"""
+        # Dividi lo spazio in 3 colonne
+        col_width = xlim / 3.0
         
-        # Linee spesse per basse frequenze
-        for i in range(int(low * 12)):
-            x_pos = np.random.uniform(0, xlim)
-            height = np.random.uniform(ylim*0.1, ylim*0.8) * low
-            y_start = np.random.uniform(0, ylim - height)
-            alpha = np.clip(0.7 * effects['alpha'], 0.0, 1.0)
-            
-            # Glow effect: draw white underlay
-            if effects['glow']:
-                ax.plot([x_pos, x_pos], [y_start, y_start + height], 
-                       color='white', 
-                       linewidth=6*low*size_mult + 1.5, 
-                       alpha=alpha * 0.5)
-            
-            ax.plot([x_pos, x_pos], [y_start, y_start + height], 
-                   color=colors['low'], linewidth=6*low*size_mult, alpha=alpha)
+        # Definizione colonne: (energia, colore, num_barre, nome_banda)
+        columns = [
+            (high, colors['high'], 8, "high"),  # Colonna 1: Alte frequenze
+            (mid, colors['mid'], 4, "mid"),     # Colonna 2: Medie frequenze
+            (low, colors['low'], 2, "low")      # Colonna 3: Basse frequenze
+        ]
         
-        # Linee medie per frequenze medie
-        for i in range(int(mid * 18)):
-            x_pos = np.random.uniform(0, xlim)
-            height = np.random.uniform(ylim*0.1, ylim*0.6) * mid
-            y_start = np.random.uniform(0, ylim - height)
-            alpha = np.clip(0.8 * effects['alpha'], 0.0, 1.0)
-            
-            # Glow effect: draw white underlay
-            if effects['glow']:
-                ax.plot([x_pos, x_pos], [y_start, y_start + height], 
-                       color='white', 
-                       linewidth=3*mid*size_mult + 1, 
-                       alpha=alpha * 0.5)
-            
-            ax.plot([x_pos, x_pos], [y_start, y_start + height], 
-                   color=colors['mid'], linewidth=3*mid*size_mult, alpha=alpha)
+        # Spaziatura tra le barre
+        bar_spacing = ylim * 0.02
         
-        # Linee sottili per alte frequenze - SENZA SCATTER/PALLINI
-        for i in range(int(high * 25)):
-            x_pos = np.random.uniform(0, xlim)
-            height = np.random.uniform(ylim*0.05, ylim*0.4) * high
-            y_start = np.random.uniform(0, ylim - height)
-            alpha = np.clip(0.9 * effects['alpha'], 0.0, 1.0)
+        for col_idx, (energy, color, num_bars, band_name) in enumerate(columns):
+            x_start = col_idx * col_width
+            x_end = x_start + col_width
             
-            # Glow effect: draw white underlay
-            if effects['glow']:
-                ax.plot([x_pos, x_pos], [y_start, y_start + height], 
-                       color='white', 
-                       linewidth=(1+high)*size_mult + 0.8, 
-                       alpha=alpha * 0.5)
+            # Calcola altezza barre e spaziamento
+            bar_height = (ylim / 15) * effects['size_mult']
+            total_height = num_bars * bar_height + (num_bars - 1) * bar_spacing
+            start_y = (ylim - total_height) / 2  # Centra verticalmente
             
-            ax.plot([x_pos, x_pos], [y_start, y_start + height], 
-                   color=colors['high'], linewidth=(1+high)*size_mult, alpha=alpha)
+            for bar_idx in range(num_bars):
+                y_pos = start_y + bar_idx * (bar_height + bar_spacing)
+                
+                # Calcola la larghezza della barra in base all'energia
+                bar_length = col_width * energy
+                
+                # Calcola luminosità in base alla posizione (barre più alte più luminose)
+                brightness = 0.4 + 0.6 * (bar_idx / num_bars)
+                bar_color = self.adjust_color_brightness(color, brightness)
+                
+                # Effetto pulsante per le barre completamente attive
+                pulse_factor = 0.8 + 0.2 * np.sin(time_idx * 0.5) if bar_length > col_width * 0.95 else 1.0
+                
+                # Crea la barra orizzontale
+                rect = Rectangle(
+                    (x_start, y_pos), 
+                    bar_length * pulse_factor, 
+                    bar_height,
+                    facecolor=bar_color,
+                    edgecolor='white' if effects['glow'] else 'none',
+                    linewidth=1.5 if effects['glow'] else 0,
+                    alpha=effects['alpha']
+                )
+                ax.add_patch(rect)
+                
+                # Crea sfondo della barra (contorno)
+                bg_rect = Rectangle(
+                    (x_start, y_pos), 
+                    col_width, 
+                    bar_height,
+                    fill=False,
+                    edgecolor='white',
+                    linewidth=0.8,
+                    alpha=0.3
+                )
+                ax.add_patch(bg_rect)
+                
+                # Aggiungi effetto glow per le barre completamente attive
+                if bar_length > col_width * 0.9 and effects['glow']:
+                    glow_rect = Rectangle(
+                        (x_start, y_pos), 
+                        bar_length * pulse_factor, 
+                        bar_height,
+                        fill=False,
+                        edgecolor='white',
+                        linewidth=3.0,
+                        alpha=0.5 * effects['alpha']
+                    )
+                    ax.add_patch(glow_rect)
     
     def create_video_no_audio(self, output_path, pattern_type, colors, effects, fps, 
                              aspect_ratio="16:9 (Standard)", video_quality="Media (1280x720)", 
@@ -610,7 +638,7 @@ class AudioVisualizer:
             "blocks": "Blocchi dinamici",
             "lines": "Linee orizzontali",
             "waves": "Onde sinusoidali",
-            "vertical": "Linee verticali"
+            "vertical": "VU-meter a colonne"
         }
         
         # Determina intensità basata sui moltiplicatori
@@ -938,7 +966,7 @@ def main():
         - **Blocks**: Blocchi rettangolari strutturati
         - **Lines**: Linee orizzontali di spessore variabile
         - **Waves**: Forme ondulatorie dinamiche
-        - **Vertical**: Linee verticali pulite (senza pallini)
+        - **Vertical**: VU-meter a colonne con barre orizzontali
         
         **📊 Il report finale includerà:**
         - Distribuzione percentuale precisa dei colori utilizzati

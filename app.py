@@ -14,7 +14,7 @@ from scipy.signal import find_peaks
 from scipy.io import wavfile
 from datetime import datetime
 import matplotlib.colors as mcolors
-import colorsys  # Aggiunto per la correzione
+import colorsys
 
 # Classe AudioVisualizer migliorata
 class AudioVisualizer:
@@ -203,26 +203,27 @@ class AudioVisualizer:
         return fig
 
     def draw_special_grid(self, ax, xlim, ylim):
-        """Disegna la griglia speciale con 3 colonne"""
+        """Disegna la griglia speciale con 3 colonne - MODIFICATA per linee uniformi"""
         # Linee verticali per le colonne
         ax.axvline(xlim/3, color='white', alpha=0.3, linewidth=1)
         ax.axvline(2*xlim/3, color='white', alpha=0.3, linewidth=1)
         
-        # Linee orizzontali per le diverse bande
-        # Colonna 1 (Alte frequenze): 8 righe
-        for i in range(1, 8):
-            y_pos = i * (ylim / 8)
-            ax.axhline(y_pos, xmin=0, xmax=1/3, color='white', alpha=0.2, linewidth=0.5)
-        
-        # Colonna 2 (Medie frequenze): 4 righe
-        for i in range(1, 4):
-            y_pos = i * (ylim / 4)
-            ax.axhline(y_pos, xmin=1/3, xmax=2/3, color='white', alpha=0.2, linewidth=0.5)
-        
-        # Colonna 3 (Basse frequenze): 2 righe
-        for i in range(1, 2):
-            y_pos = i * (ylim / 2)
-            ax.axhline(y_pos, xmin=2/3, xmax=1, color='white', alpha=0.2, linewidth=0.5)
+        # Linee orizzontali per tutte le bande della stessa grandezza
+        # Calcola il numero totale di linee: 8 (alte) + 4 (medie) + 2 (basse) = 14 linee
+        total_lines = 14
+        for i in range(1, total_lines + 1):
+            y_pos = i * (ylim / (total_lines + 1))
+            
+            # Determina il colore in base alla posizione
+            if i <= 8:  # Alte frequenze (primi 8)
+                color = 'white'
+            elif i <= 12:  # Medie frequenze (successivi 4)
+                color = 'cyan'
+            else:  # Basse frequenze (ultimi 2)
+                color = 'red'
+            
+            # Disegna la linea per tutta la larghezza
+            ax.axhline(y_pos, xmin=0, xmax=1, color=color, alpha=0.2, linewidth=0.5)
     
     def draw_title(self, ax, title_settings, xlim, ylim):
         """Disegna il titolo in base alle impostazioni di posizione"""
@@ -670,8 +671,8 @@ class AudioVisualizer:
 
 ### 🌈 Color Distribution by Frequency Band:
 - **🔴 Low Frequencies (20-250Hz):** {low_percent:.1f}%
-- **🔵 Mid Frequencies (250-4000Hz):** {mid_percent:.1f}%  
-- **⚪ High Frequencies (4000-20000Hz):** {high_percent:.1f}%
+- **🔵 Mid Frequenze (250-4000Hz):** {mid_percent:.1f}%  
+- **⚪ High Frequenze (4000-20000Hz):** {high_percent:.1f}%
 
 ### ⚙️ Visual Configuration:
 - **🎭 Style:** {pattern_names.get(pattern_type, pattern_type.title())}
@@ -959,7 +960,7 @@ def main():
         1. Carica un file audio dalla sidebar
         2. Scehi il tipo di pattern e personalizza i colori
         3. Configura il titolo e la sua posizione
-        4. Seleziona qualità video e aspect ratio desiderati
+        4. Seleziona qualità video and aspect ratio desiderati
         5. Configura gli effetti e la qualità
         6. Crea il video per vedere il report completo!
         

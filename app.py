@@ -109,18 +109,40 @@ class AudioVisualizer:
         
         return low_percent, mid_percent, high_percent
     
-    def get_aspect_ratio_settings(self, aspect_ratio):
-        """Determina le impostazioni per l'aspect ratio"""
+    def get_resolution(self, video_quality, aspect_ratio):
+        """Determina la risoluzione in pixel per il video"""
+        base_resolutions = {
+            "Bassa (960x540)": (960, 540),
+            "Media (1280x720)": (1280, 720), 
+            "Alta (1920x1080)": (1920, 1080)
+        }
+        
+        base_width, base_height = base_resolutions[video_quality]
+        
         if aspect_ratio == "16:9 (Standard)":
-            return (14, 10), (16, 10)
+            return (base_width, base_height)
         elif aspect_ratio == "1:1 (Quadrato)":
-            return (10, 10), (10, 10)
+            size = min(base_width, base_height)
+            return (size, size)
         elif aspect_ratio == "9:16 (Verticale)":
-            return (10, 14), (10, 16)
+            return (base_height, base_width)
         else:
-            return (14, 10), (16, 10)  # default
+            return (base_width, base_height)
     
-    def create_pattern_frame(self, time_idx, pattern_type="blocks", colors=None, effects=None, aspect_ratio="16:9 (Standard)", title_settings=None):
+    def get_aspect_ratio_limits(self, aspect_ratio):
+        """Determina i limiti degli assi per l'aspect ratio"""
+        if aspect_ratio == "16:9 (Standard)":
+            return (16, 9)
+        elif aspect_ratio == "1:1 (Quadrato)":
+            return (10, 10)
+        elif aspect_ratio == "9:16 (Verticale)":
+            return (9, 16)
+        else:
+            return (16, 9)  # default
+    
+    def create_pattern_frame(self, time_idx, pattern_type="blocks", colors=None, effects=None, 
+                            aspect_ratio="16:9 (Standard)", title_settings=None, 
+                            resolution_px=None, dpi=100):
         """Crea un frame del pattern basato sulle frequenze"""
         low_norm, mid_norm, high_norm = self.get_normalized_bands(time_idx)
         
@@ -138,13 +160,21 @@ class AudioVisualizer:
             effects = {
                 'size_mult': 1.0, 'movement': 0.5, 'alpha': 0.7, 
                 'glow': True, 'grid': True, 'gradient': True,
-                'special_grid': True  # Nuovo effetto griglia speciale
+                'special_grid': True
             }
         
         # Ottieni impostazioni aspect ratio
-        figsize, (xlim, ylim) = self.get_aspect_ratio_settings(aspect_ratio)
+        xlim, ylim = self.get_aspect_ratio_limits(aspect_ratio)
         
-        fig, ax = plt.subplots(figsize=figsize, facecolor=colors['bg'])
+        # Determina figure size basato su risoluzione
+        if resolution_px and dpi:
+            figsize = (resolution_px[0] / dpi, resolution_px[1] / dpi)
+        else:
+            # Modalità preview
+            base_width = 10
+            figsize = (base_width, base_width * (ylim / xlim))
+        
+        fig, ax = plt.subplots(figsize=figsize, facecolor=colors['bg'], dpi=dpi)
         ax.set_facecolor(colors['bg'])
         
         # Disegna la griglia speciale se richiesta
@@ -444,7 +474,9 @@ class AudioVisualizer:
             ax.plot([x_pos, x_pos], [y_start, y_start + height], 
                    color=colors['high'], linewidth=(1+high)*size_mult, alpha=alpha)
     
-    def create_video_no_audio(self, output_path, pattern_type, colors, effects, fps, aspect_ratio="16:9 (Standard)", title_settings=None):
+    def create_video_no_audio(self, output_path, pattern_type, colors, effects, fps, 
+                             aspect_ratio="16:9 (Standard)", video_quality="Media (1280x720)", 
+                             title_settings=None):
         """Crea un video senza audio"""
         # Reset statistiche colori
         self.color_statistics = {
@@ -453,6 +485,9 @@ class AudioVisualizer:
             'high_total': 0,
             'total_energy': 0
         }
+        
+        # Calcola la risoluzione finale
+        resolution_px = self.get_resolution(video_quality, aspect_ratio)
         
         # Calcola il numero totale di frame
         total_frames = int(self.duration * fps)
@@ -474,12 +509,15 @@ class AudioVisualizer:
             # Trova l'indice temporale più vicino
             time_idx = np.argmin(np.abs(self.times - current_time))
             
-            # Crea frame
-            fig = self.create_pattern_frame(time_idx, pattern_type, colors, effects, aspect_ratio, title_settings)
+            # Crea frame con la risoluzione corretta
+            fig = self.create_pattern_frame(
+                time_idx, pattern_type, colors, effects, aspect_ratio, 
+                title_settings, resolution_px=resolution_px, dpi=100
+            )
             
             # Salva il frame come immagine
             frame_path = os.path.join(temp_dir, f"frame_{frame_idx:04d}.png")
-            fig.savefig(frame_path, dpi=100, bbox_inches='tight', pad_inches=0)
+            fig.savefig(frame_path, bbox_inches='tight', pad_inches=0)
             plt.close(fig)
             frame_paths.append(frame_path)
             
@@ -500,7 +538,7 @@ class AudioVisualizer:
         status_text.text("✅ Video senza audio creato")
         progress_bar.empty()
         
-        return total_frames
+        return total_frames, resolution_px
     
     def create_video_with_audio(self, output_path, pattern_type, colors, effects, fps, 
                                audio_filename="Unknown Track", video_quality="Media (1280x720)", 
@@ -508,7 +546,10 @@ class AudioVisualizer:
         """Crea un video completo con audio e genera report finale"""
         # Crea un video temporaneo senza audio
         temp_video_path = output_path.replace('.mp4', '_no_audio.mp4')
-        total_frames = self.create_video_no_audio(temp_video_path, pattern_type, colors, effects, fps, aspect_ratio, title_settings)
+        total_frames, resolution_px = self.create_video_no_audio(
+            temp_video_path, pattern_type, colors, effects, fps, 
+            aspect_ratio, video_quality, title_settings
+        )
         
         # Crea un file audio temporaneo
         temp_audio_path = output_path.replace('.mp4', '.wav')
@@ -541,7 +582,8 @@ class AudioVisualizer:
             # Genera e mostra il report finale
             self.show_generation_report(audio_filename, video_title, pattern_type, 
                                       colors, effects, fps, total_frames, 
-                                      video_quality, aspect_ratio, title_settings)
+                                      video_quality, aspect_ratio, title_settings,
+                                      resolution_px)
             
             return True
             
@@ -555,31 +597,13 @@ class AudioVisualizer:
             if os.path.exists(temp_audio_path):
                 os.remove(temp_audio_path)
     
-    def show_generation_report(self, audio_filename, video_title, pattern_type, colors, effects, fps, total_frames, video_quality, aspect_ratio, title_settings):
+    def show_generation_report(self, audio_filename, video_title, pattern_type, colors, effects, fps, total_frames, video_quality, aspect_ratio, title_settings, resolution_px):
         """Mostra il report dettagliato della generazione"""
         # Calcola le percentuali dei colori
         low_percent, mid_percent, high_percent = self.get_color_percentages()
         
-        # Determina risoluzione basata su qualità e aspect ratio
-        base_resolutions = {
-            "Bassa (960x540)": (960, 540),
-            "Media (1280x720)": (1280, 720), 
-            "Alta (1920x1080)": (1920, 1080)
-        }
-        
-        base_width, base_height = base_resolutions[video_quality]
-        
-        # Calcola risoluzione finale basata su aspect ratio
-        if aspect_ratio == "16:9 (Standard)":
-            final_resolution = f"{base_width}x{base_height}"
-        elif aspect_ratio == "1:1 (Quadrato)":
-            # Usa l'altezza come base per il quadrato
-            final_resolution = f"{base_height}x{base_height}"
-        elif aspect_ratio == "9:16 (Verticale)":
-            # Inverti larghezza e altezza
-            final_resolution = f"{base_height}x{base_width}"
-        else:
-            final_resolution = f"{base_width}x{base_height}"
+        # Formatta la risoluzione
+        final_resolution = f"{resolution_px[0]}x{resolution_px[1]}"
         
         # Mappa nomi pattern
         pattern_names = {
@@ -702,7 +726,7 @@ def main():
         color_high = st.color_picker("Freq. Acute", "#FFFFFF", help="Colore per frequenze acute (4000-20000Hz)")
         bg_color = st.color_picker("Sfondo", "#000000", help="Colore di sfondo")
     
-    # NUOVO: Controlli per il titolo
+    # Controlli per il titolo
     st.sidebar.subheader("📝 Impostazioni Titolo")
     title_enabled = st.sidebar.checkbox("Mostra Titolo", value=True)
     title_text = st.sidebar.text_input("Testo Titolo", video_title)
@@ -741,7 +765,7 @@ def main():
     # Grid structure
     grid_mode = st.sidebar.checkbox("Modalità Griglia", value=True)
     
-    # NUOVO: Special Grid
+    # Special Grid
     special_grid = st.sidebar.checkbox("Griglia Speciale", value=True)
     
     # Sfumature
@@ -750,10 +774,10 @@ def main():
     # FPS per la visualizzazione
     frame_rate = st.sidebar.selectbox("FPS", [10, 15, 20, 30], index=2)
     
-    # Qualità video MODIFICATA
+    # Qualità video
     video_quality = st.sidebar.selectbox("Qualità Video", ["Bassa (960x540)", "Media (1280x720)", "Alta (1920x1080)"], index=1)
     
-    # Aspect Ratio personalizzato NUOVO
+    # Aspect Ratio personalizzato
     aspect_ratio = st.sidebar.selectbox("Aspect Ratio", ["16:9 (Standard)", "1:1 (Quadrato)", "9:16 (Verticale)"], index=0)
     
     # Prepara impostazioni titolo
@@ -792,7 +816,7 @@ def main():
                 'glow': glow_effect,
                 'grid': grid_mode,
                 'gradient': gradient_mode,
-                'special_grid': special_grid  # Nuovo effetto
+                'special_grid': special_grid
             }
             
         st.success(f"✅ Audio caricato! Durata: {duration:.1f}s, Sample Rate: {sr}Hz")
@@ -904,7 +928,7 @@ def main():
         
         **Come usare:**
         1. Carica un file audio dalla sidebar
-        2. Scegli il tipo di pattern e personalizza i colori
+        2. Scehi il tipo di pattern e personalizza i colori
         3. Configura il titolo e la sua posizione
         4. Seleziona qualità video e aspect ratio desiderati
         5. Configura gli effetti e la qualità

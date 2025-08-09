@@ -159,7 +159,7 @@ class AudioVisualizer:
             width = np.random.uniform(0.5, 2.0) * low * size_mult
             height = np.random.uniform(0.3, 1.5) * low * size_mult
             color = colors['low']
-            alpha = (0.3 + low * 0.7) * effects['alpha']
+            alpha = np.clip((0.3 + low * 0.7) * effects['alpha'], 0.0, 1.0)  # CLAMP alpha
             
             rect = Rectangle((x, y), width, height, 
                            facecolor=color, alpha=alpha, edgecolor='none')
@@ -172,7 +172,7 @@ class AudioVisualizer:
             width = np.random.uniform(0.2, 1.0) * mid * size_mult
             height = np.random.uniform(0.2, 1.0) * mid * size_mult
             color = colors['mid']
-            alpha = (0.4 + mid * 0.6) * effects['alpha']
+            alpha = np.clip((0.4 + mid * 0.6) * effects['alpha'], 0.0, 1.0)  # CLAMP alpha
             
             rect = Rectangle((x, y), width, height, 
                            facecolor=color, alpha=alpha, edgecolor='none')
@@ -185,7 +185,7 @@ class AudioVisualizer:
             width = np.random.uniform(0.1, 0.5) * high * size_mult
             height = np.random.uniform(0.1, 0.5) * high * size_mult
             color = colors['high']
-            alpha = (0.5 + high * 0.5) * effects['alpha']
+            alpha = np.clip((0.5 + high * 0.5) * effects['alpha'], 0.0, 1.0)  # CLAMP alpha
             
             rect = Rectangle((x, y), width, height, 
                            facecolor=color, alpha=alpha, edgecolor='none')
@@ -203,8 +203,9 @@ class AudioVisualizer:
             x_start = np.random.uniform(0, 4)
             x_end = x_start + np.random.uniform(4, 12) * low * size_mult  # Linee più lunghe
             x_end = min(x_end, 16)  # Non superare il bordo destro
+            alpha = np.clip(0.7 * effects['alpha'], 0.0, 1.0)  # CLAMP alpha
             ax.plot([x_start, x_end], [y, y], 
-                   color=colors['low'], linewidth=8*low*size_mult, alpha=0.7*effects['alpha'])
+                   color=colors['low'], linewidth=8*low*size_mult, alpha=alpha)
         
         # Linee medie - ESTESE A TUTTO LO SCHERMO
         for i in range(int(mid * 12)):
@@ -212,8 +213,9 @@ class AudioVisualizer:
             x_start = np.random.uniform(0, 6)
             x_end = x_start + np.random.uniform(3, 10) * mid * size_mult  # Linee più lunghe
             x_end = min(x_end, 16)  # Non superare il bordo destro
+            alpha = np.clip(0.6 * effects['alpha'], 0.0, 1.0)  # CLAMP alpha
             ax.plot([x_start, x_end], [y, y], 
-                   color=colors['mid'], linewidth=4*mid*size_mult, alpha=0.6*effects['alpha'])
+                   color=colors['mid'], linewidth=4*mid*size_mult, alpha=alpha)
         
         # Linee sottili per acute - ESTESE A TUTTO LO SCHERMO
         for i in range(int(high * 20)):
@@ -221,8 +223,9 @@ class AudioVisualizer:
             x_start = np.random.uniform(0, 8)
             x_end = x_start + np.random.uniform(2, 8) * high * size_mult  # Linee più lunghe
             x_end = min(x_end, 16)  # Non superare il bordo destro
+            alpha = np.clip(0.8 * effects['alpha'], 0.0, 1.0)  # CLAMP alpha
             ax.plot([x_start, x_end], [y, y], 
-                   color=colors['high'], linewidth=(1+high)*size_mult, alpha=0.8*effects['alpha'])
+                   color=colors['high'], linewidth=(1+high)*size_mult, alpha=alpha)
     
     def draw_waves_pattern(self, ax, low, mid, high, colors, effects, time_idx):
         """Pattern ondulatorio - CORRETTO per riempire tutto lo schermo"""
@@ -236,19 +239,22 @@ class AudioVisualizer:
         for i in range(3):
             y_offset = 2 + i * 2.5  # Spaziate verticalmente
             wave = y_offset + low * np.sin(2 * np.pi * (0.3 + i * 0.2) * x + time_offset)
-            ax.plot(x, wave, color=colors['low'], linewidth=6*low*size_mult, alpha=0.8*effects['alpha'])
+            alpha = np.clip(0.8 * effects['alpha'], 0.0, 1.0)  # CLAMP alpha
+            ax.plot(x, wave, color=colors['low'], linewidth=6*low*size_mult, alpha=alpha)
         
         # Onde medie - MIGLIORATE per coprire tutto lo schermo
         for i in range(4):
             y_offset = 1.5 + i * 2.0  # Spaziate meglio verticalmente
             wave = y_offset + mid * 0.8 * np.sin(2 * np.pi * (0.8 + i * 0.4) * x + time_offset)
-            ax.plot(x, wave, color=colors['mid'], linewidth=4*mid*size_mult, alpha=0.7*effects['alpha'])
+            alpha = np.clip(0.7 * effects['alpha'], 0.0, 1.0)  # CLAMP alpha
+            ax.plot(x, wave, color=colors['mid'], linewidth=4*mid*size_mult, alpha=alpha)
         
         # Onde acute - rapide e piccole - MIGLIORATE
         for i in range(5):
             y_offset = 1 + i * 1.8  # Spaziate meglio verticalmente
             wave = y_offset + high * 0.6 * np.sin(2 * np.pi * (1.5 + i * 0.6) * x + time_offset)
-            ax.plot(x, wave, color=colors['high'], linewidth=(1.5+high)*size_mult, alpha=0.9*effects['alpha'])
+            alpha = np.clip(0.9 * effects['alpha'], 0.0, 1.0)  # CLAMP alpha
+            ax.plot(x, wave, color=colors['high'], linewidth=(1.5+high)*size_mult, alpha=alpha)
     
     def draw_vertical_lines_pattern(self, ax, low, mid, high, colors, effects, time_idx):
         """Pattern: Linee verticali dinamiche"""
@@ -260,32 +266,36 @@ class AudioVisualizer:
             x = np.random.uniform(0, 16)
             height = np.random.uniform(1, 8) * low
             y_start = np.random.uniform(0, 10 - height)
+            alpha = np.clip(0.7 * effects['alpha'], 0.0, 1.0)  # CLAMP alpha
             ax.plot([x, x], [y_start, y_start + height], 
-                   color=colors['low'], linewidth=6*low*size_mult, alpha=0.7*effects['alpha'])
+                   color=colors['low'], linewidth=6*low*size_mult, alpha=alpha)
         
         # Linee medie per frequenze medie
         for i in range(int(mid * 18)):
             x = np.random.uniform(0, 16)
             height = np.random.uniform(1, 6) * mid
             y_start = np.random.uniform(0, 10 - height)
+            alpha = np.clip(0.8 * effects['alpha'], 0.0, 1.0)  # CLAMP alpha
             ax.plot([x, x], [y_start, y_start + height], 
-                   color=colors['mid'], linewidth=3*mid*size_mult, alpha=0.8*effects['alpha'])
+                   color=colors['mid'], linewidth=3*mid*size_mult, alpha=alpha)
         
         # Linee sottili per alte frequenze
         for i in range(int(high * 25)):
             x = np.random.uniform(0, 16)
             height = np.random.uniform(1, 4) * high
             y_start = np.random.uniform(0, 10 - height)
+            alpha = np.clip(0.9 * effects['alpha'], 0.0, 1.0)  # CLAMP alpha
             ax.plot([x, x], [y_start, y_start + height], 
-                   color=colors['high'], linewidth=(1+high)*size_mult, alpha=0.9*effects['alpha'])
+                   color=colors['high'], linewidth=(1+high)*size_mult, alpha=alpha)
         
         # Effetto pulviscolo per le alte frequenze
         for i in range(int(high * 50)):
             x = np.random.uniform(0, 16)
             y = np.random.uniform(0, 10)
             size = (0.1 + high * 0.3) * size_mult
+            alpha = np.clip((0.6 + high * 0.3) * effects['alpha'], 0.0, 1.0)  # CLAMP alpha
             ax.scatter(x, y, s=(10+high*50)*size_mult, c=colors['high'], 
-                      marker='o', alpha=(0.6+high*0.3)*effects['alpha'])
+                      marker='o', alpha=alpha)
     
     def create_video_no_audio(self, output_path, pattern_type, colors, effects, fps):
         """Crea un video senza audio"""

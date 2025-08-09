@@ -208,11 +208,11 @@ class AudioVisualizer:
         ax.axvline(xlim/3, color='white', alpha=0.3, linewidth=1)
         ax.axvline(2*xlim/3, color='white', alpha=0.3, linewidth=1)
         
-        # Impostazioni spessori
-        line_styles = [
-            (8, 0.5),  # 8 linee per alte frequenze (spessore base)
-            (4, 1.0),  # 4 linee per medie frequenze (spessore doppio)
-            (2, 2.0)   # 2 linee per basse frequenze (spessore quadruplo)
+        # Impostazioni spessori per colonna
+        column_specs = [
+            (8, 0.5),  # Colonna 1: Alte frequenze (8 linee, spessore 0.5)
+            (4, 1.0),  # Colonna 2: Medie frequenze (4 linee, spessore 1.0)
+            (2, 2.0)   # Colonna 3: Basse frequenze (2 linee, spessore 2.0)
         ]
         
         # Coordinate X delle colonne
@@ -222,19 +222,25 @@ class AudioVisualizer:
             (2*xlim/3, xlim)       # Colonna 3: Basse frequenze
         ]
         
-        for col_idx, (num_lines, linewidth) in enumerate(line_styles):
+        for col_idx, (num_lines, linewidth) in enumerate(column_specs):
             x_start, x_end = column_ranges[col_idx]
             
-            for i in range(1, num_lines + 1):
-                y_pos = i * (ylim / (num_lines + 1))
-                
+            # Calcola le posizioni Y distribuite uniformemente
+            y_positions = np.linspace(
+                start=ylim/(num_lines+1), 
+                stop=ylim*num_lines/(num_lines+1), 
+                num=num_lines
+            )
+            
+            for y_pos in y_positions:
                 # Disegna la linea orizzontale per l'intera larghezza della colonna
                 ax.plot(
                     [x_start, x_end], 
                     [y_pos, y_pos], 
                     color='white', 
                     linewidth=linewidth,
-                    alpha=0.2
+                    alpha=0.2,
+                    solid_capstyle='butt'  # Estremità squadrate
                 )
     
     def draw_title(self, ax, title_settings, xlim, ylim):
@@ -430,9 +436,12 @@ class AudioVisualizer:
             
             # Glow effect: draw white underlay
             if effects['glow']:
-                ax.plot(x, wave, color='white', linewidth=(1.5+high)*size_mult + 1, alpha=alpha * 0.4)
+                ax.plot(x, wave, color='white', 
+                       linewidth=(1.5+high)*size_mult + 1, 
+                       alpha=alpha * 0.4)
             
-            ax.plot(x, wave, color=colors['high'], linewidth=(1.5+high)*size_mult, alpha=alpha)
+            ax.plot(x, wave, color=colors['high'], 
+                   linewidth=(1.5+high)*size_mult, alpha=alpha)
     
     def adjust_color_brightness(self, color, factor):
         """Regola la luminosità di un colore usando colorsys"""

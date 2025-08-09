@@ -191,6 +191,8 @@ class AudioVisualizer:
             self.draw_waves_pattern(ax, low_norm, mid_norm, high_norm, colors, effects, time_idx, xlim, ylim)
         elif pattern_type == "vertical":
             self.draw_vertical_lines_pattern(ax, low_norm, mid_norm, high_norm, colors, effects, time_idx, xlim, ylim)
+        elif pattern_type == "glitch":
+            self.draw_glitch_pattern(ax, low_norm, mid_norm, high_norm, colors, effects, time_idx, xlim, ylim)
             
         # Aggiungi titolo se specificato
         if title_settings and title_settings['text']:
@@ -208,11 +210,11 @@ class AudioVisualizer:
         ax.axvline(xlim/3, color='white', alpha=0.3, linewidth=1)
         ax.axvline(2*xlim/3, color='white', alpha=0.3, linewidth=1)
         
-        # Impostazioni spessori per colonna
-        column_specs = [
-            (8, 0.5),  # Colonna 1: Alte frequenze (8 linee, spessore 0.5)
-            (4, 1.0),  # Colonna 2: Medie frequenze (4 linee, spessore 1.0)
-            (2, 2.0)   # Colonna 3: Basse frequenze (2 linee, spessore 2.0)
+        # Impostazioni spessori
+        line_styles = [
+            (8, 0.5),  # 8 linee per alte frequenze (spessore base)
+            (4, 1.0),  # 4 linee per medie frequenze (spessore doppio)
+            (2, 2.0)   # 2 linee per basse frequenze (spessore quadruplo)
         ]
         
         # Coordinate X delle colonne
@@ -222,25 +224,19 @@ class AudioVisualizer:
             (2*xlim/3, xlim)       # Colonna 3: Basse frequenze
         ]
         
-        for col_idx, (num_lines, linewidth) in enumerate(column_specs):
+        for col_idx, (num_lines, linewidth) in enumerate(line_styles):
             x_start, x_end = column_ranges[col_idx]
             
-            # Calcola le posizioni Y distribuite uniformemente
-            y_positions = np.linspace(
-                start=ylim/(num_lines+1), 
-                stop=ylim*num_lines/(num_lines+1), 
-                num=num_lines
-            )
-            
-            for y_pos in y_positions:
+            for i in range(1, num_lines + 1):
+                y_pos = i * (ylim / (num_lines + 1))
+                
                 # Disegna la linea orizzontale per l'intera larghezza della colonna
                 ax.plot(
                     [x_start, x_end], 
                     [y_pos, y_pos], 
                     color='white', 
                     linewidth=linewidth,
-                    alpha=0.2,
-                    solid_capstyle='butt'  # Estremità squadrate
+                    alpha=0.2
                 )
     
     def draw_title(self, ax, title_settings, xlim, ylim):
@@ -436,12 +432,9 @@ class AudioVisualizer:
             
             # Glow effect: draw white underlay
             if effects['glow']:
-                ax.plot(x, wave, color='white', 
-                       linewidth=(1.5+high)*size_mult + 1, 
-                       alpha=alpha * 0.4)
+                ax.plot(x, wave, color='white', linewidth=(1.5+high)*size_mult + 1, alpha=alpha * 0.4)
             
-            ax.plot(x, wave, color=colors['high'], 
-                   linewidth=(1.5+high)*size_mult, alpha=alpha)
+            ax.plot(x, wave, color=colors['high'], linewidth=(1.5+high)*size_mult, alpha=alpha)
     
     def adjust_color_brightness(self, color, factor):
         """Regola la luminosità di un colore usando colorsys"""
@@ -524,6 +517,123 @@ class AudioVisualizer:
                         alpha=0.5 * effects['alpha']
                     )
                     ax.add_patch(glow_rect)
+    
+    def draw_glitch_pattern(self, ax, low, mid, high, colors, effects, time_idx, xlim, ylim):
+        """Pattern Glitch Art con blocchi che si spostano e distorcono"""
+        # Configurazione griglia
+        num_blocks_x = 20
+        num_blocks_y = 15
+        block_width = xlim / num_blocks_x
+        block_height = ylim / num_blocks_y
+        
+        # Colori disponibili (neon)
+        neon_colors = [colors['low'], colors['mid'], colors['high'], '#FF00FF', '#00FFFF', '#FFFF00']
+        
+        # Effetti di distorsione basati sulle frequenze
+        distortion_low = low * 0.5 * effects['size_mult']
+        distortion_mid = mid * 0.8 * effects['size_mult']
+        distortion_high = high * 1.2 * effects['size_mult']
+        
+        # Blocchi principali
+        for i in range(num_blocks_x):
+            for j in range(num_blocks_y):
+                # Posizione base
+                x = i * block_width
+                y = j * block_height
+                
+                # Distorsione basata sull'audio
+                dx = np.random.uniform(-distortion_low, distortion_low) * block_width
+                dy = np.random.uniform(-distortion_mid, distortion_mid) * block_height
+                
+                # Effetto di stretch
+                stretch_w = 1 + distortion_high * np.random.uniform(0, 0.5)
+                stretch_h = 1 + distortion_low * np.random.uniform(0, 0.3)
+                
+                width = block_width * stretch_w
+                height = block_height * stretch_h
+                
+                # Scegli colore casuale dalla palette neon
+                color = np.random.choice(neon_colors)
+                
+                # Alpha dinamico
+                alpha = effects['alpha'] * np.random.uniform(0.6, 1.0)
+                
+                # Crea blocco
+                rect = Rectangle(
+                    (x + dx, y + dy), 
+                    width, 
+                    height,
+                    facecolor=color,
+                    edgecolor='white' if effects['glow'] else 'none',
+                    linewidth=0.5,
+                    alpha=alpha
+                )
+                ax.add_patch(rect)
+        
+        # Effetto scanlines (linee orizzontali)
+        if effects['grid']:
+            scanline_alpha = 0.1 + distortion_high * 0.1
+            for j in range(num_blocks_y * 2):
+                y_pos = j * (block_height / 2)
+                ax.axhline(y_pos, color='white', alpha=scanline_alpha, linewidth=0.3)
+        
+        # Effetto pixel drift (spostamento di blocchi)
+        drift_blocks = int(10 + distortion_mid * 20)
+        for _ in range(drift_blocks):
+            i = np.random.randint(0, num_blocks_x)
+            j = np.random.randint(0, num_blocks_y)
+            
+            x = i * block_width
+            y = j * block_height
+            
+            # Distorsione più pronunciata
+            dx = np.random.uniform(-1, 1) * distortion_high * block_width * 2
+            dy = np.random.uniform(-1, 1) * distortion_mid * block_height * 1.5
+            
+            # Dimensione casuale
+            width = block_width * np.random.uniform(0.8, 1.5)
+            height = block_height * np.random.uniform(0.8, 1.5)
+            
+            # Scegli colore
+            color = np.random.choice(neon_colors)
+            alpha = effects['alpha'] * np.random.uniform(0.7, 1.0)
+            
+            # Crea blocco fluttuante
+            rect = Rectangle(
+                (x + dx, y + dy), 
+                width, 
+                height,
+                facecolor=color,
+                edgecolor='white',
+                linewidth=0.8,
+                alpha=alpha
+            )
+            ax.add_patch(rect)
+        
+        # Effetto glitch (linee di distorsione verticali)
+        glitch_lines = int(5 + distortion_high * 15)
+        for _ in range(glitch_lines):
+            x_pos = np.random.uniform(0, xlim)
+            offset = distortion_high * np.random.uniform(-0.05, 0.05) * ylim
+            
+            ax.plot(
+                [x_pos, x_pos], 
+                [0, ylim], 
+                color=np.random.choice(neon_colors), 
+                linewidth=np.random.uniform(0.5, 2.0),
+                alpha=np.random.uniform(0.1, 0.3)
+            )
+            
+            # Effetto di spostamento
+            if np.random.rand() > 0.7:
+                ax.plot(
+                    [x_pos, x_pos], 
+                    [offset, ylim + offset], 
+                    color='white', 
+                    linewidth=0.8,
+                    alpha=0.4,
+                    linestyle='dashed'
+                )
     
     def create_video_no_audio(self, output_path, pattern_type, colors, effects, fps, 
                              aspect_ratio="16:9 (Standard)", video_quality="Media (1280x720)", 
@@ -661,7 +771,8 @@ class AudioVisualizer:
             "blocks": "Blocchi dinamici",
             "lines": "Linee orizzontali",
             "waves": "Onde sinusoidali",
-            "vertical": "VU-meter a colonne"
+            "vertical": "VU-meter a colonne",
+            "glitch": "Glitch Art Digitale"
         }
         
         # Determina intensità basata sui moltiplicatori
@@ -763,7 +874,7 @@ def main():
     # Selezione pattern
     pattern_type = st.sidebar.selectbox(
         "Tipo di Pattern",
-        ["blocks", "lines", "waves", "vertical"],
+        ["blocks", "lines", "waves", "vertical", "glitch"],
         help="Scegli il tipo di visualizzazione"
     )
     
@@ -976,6 +1087,7 @@ def main():
         - **🎭 Pattern verticale migliorato** senza elementi di disturbo
         - **📝 Titolo personalizzabile** con posizionamento
         - **🔳 Griglia speciale** con struttura a 3 colonne
+        - **🌀 Nuovo pattern Glitch Art** con distorsioni digitali
         
         **Come usare:**
         1. Carica un file audio dalla sidebar
@@ -990,6 +1102,7 @@ def main():
         - **Lines**: Linee orizzontali di spessore variabile
         - **Waves**: Forme ondulatorie dinamiche
         - **Vertical**: VU-meter a colonne con barre orizzontali
+        - **Glitch**: Arte digitale con distorsioni e effetti glitch
         
         **📊 Il report finale includerà:**
         - Distribuzione percentuale precisa dei colori utilizzati

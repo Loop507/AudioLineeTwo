@@ -14,15 +14,121 @@ from datetime import datetime
 # Classe AudioVisualizer semplificata
 class AudioVisualizer:
     def __init__(self, audio_data, sr, duration=None):
-        # ... [codice esistente invariato] ...
+        self.audio = audio_data
+        self.sr = sr
+        self.duration = duration if duration else librosa.get_duration(y=audio_data, sr=sr)
+        self.n_fft = 2048
+        self.hop_length = 512
+        self.spec = None
+        self.freqs = None
+        self.times = None
         
-    # ... [metodi esistenti invariati] ...
+        # Calcola lo spettrogramma
+        self.compute_spectrogram()
+    
+    def compute_spectrogram(self):
+        S = np.abs(librosa.stft(self.audio, n_fft=self.n_fft, hop_length=self.hop_length))
+        self.spec = librosa.amplitude_to_db(S, ref=np.max)
+        self.freqs = librosa.fft_frequencies(sr=self.sr, n_fft=self.n_fft)
+        self.times = librosa.times_like(self.spec, sr=self.sr, hop_length=self.hop_length)
+    
+    def get_band_energy(self, time_idx):
+        frame_idx = np.argmin(np.abs(self.times - time_idx))
+        frame = self.spec[:, frame_idx]
+        
+        # Divide le frequenze in 3 bande
+        low_band = (self.freqs <= 300)
+        mid_band = (self.freqs > 300) & (self.freqs <= 3000)
+        high_band = (self.freqs > 3000)
+        
+        low_energy = np.mean(frame[low_band]) if np.any(low_band) else -80
+        mid_energy = np.mean(frame[mid_band]) if np.any(mid_band) else -80
+        high_energy = np.mean(frame[high_band]) if np.any(high_band) else -80
+        
+        # Normalizza le energie tra 0 e 1
+        low_norm = max(0, (low_energy + 80) / 80)
+        mid_norm = max(0, (mid_energy + 80) / 80)
+        high_norm = max(0, (high_energy + 80) / 80)
+        
+        return low_norm, mid_norm, high_norm
 
     def create_pattern_frame(self, time_idx, pattern_type="waves", colors=None, effects=None,
                             aspect_ratio="16:9 (Standard)", title_settings=None, 
                             resolution_px=None, dpi=100):
         """Crea un frame del pattern basato sulle frequenze - SOLO WAVES con effetti"""
-        # ... [codice esistente invariato] ...
+        # Impostazioni predefinite
+        if colors is None:
+            colors = {
+                'low': '#FF0000',    # Rosso
+                'mid': '#0000FF',    # Blu
+                'high': '#FFFFFF'    # Bianco
+            }
+            
+        if effects is None:
+            effects = {
+                'speed': 0.1,
+                'intensity': 1.0,
+                'background': 'black'
+            }
+            
+        if title_settings is None:
+            title_settings = {
+                'text': "AudioLineTwo WAVES",
+                'color': '#FFFFFF',
+                'size': 40,
+                'position': (0.5, 0.95)
+            }
+            
+        # Calcola le energie delle bande
+        low_norm, mid_norm, high_norm = self.get_band_energy(time_idx)
+        
+        # Configura dimensioni immagine basate su aspect ratio
+        aspect_ratios = {
+            "16:9 (Standard)": (16, 9),
+            "1:1 (Quadrato)": (1, 1),
+            "4:3 (TV)": (4, 3),
+            "21:9 (Cinema)": (21, 9),
+            "9:16 (Verticale)": (9, 16),
+            "Personalizzato": (16, 9)  # Default per personalizzato
+        }
+        
+        # Gestione risoluzione
+        if resolution_px is None:
+            width, height = aspect_ratios[aspect_ratio]
+            base_size = 10
+            figsize = (base_size * width/height, base_size)
+        else:
+            width, height = resolution_px
+            figsize = (width/dpi, height/dpi)
+        
+        # Crea figura e axes
+        fig = plt.figure(figsize=figsize, dpi=dpi, facecolor=effects.get('background', 'black'))
+        ax = fig.add_subplot(111)
+        ax.set_facecolor(effects.get('background', 'black'))
+        
+        # Rimuovi bordi e assi
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.spines['bottom'].set_visible(False)
+        ax.spines['left'].set_visible(False)
+        
+        # Imposta limiti per l'area di disegno
+        xlim = figsize[0] * 2
+        ylim = figsize[1] * 2
+        ax.set_xlim(0, xlim)
+        ax.set_ylim(0, ylim)
+        
+        # Aggiungi titolo se specificato
+        if title_settings.get('show', True):
+            ax.text(title_settings['position'][0] * xlim, 
+                    title_settings['position'][1] * ylim,
+                    title_settings['text'],
+                    fontsize=title_settings['size'],
+                    color=title_settings['color'],
+                    ha='center', va='center',
+                    alpha=title_settings.get('alpha', 1.0))
         
         # Disegna il pattern wave specifico
         if pattern_type == "waves":
@@ -31,23 +137,34 @@ class AudioVisualizer:
             self.draw_interference_waves(ax, low_norm, mid_norm, high_norm, colors, effects, time_idx, xlim, ylim)
         elif pattern_type == "flowing":
             self.draw_flowing_waves(ax, low_norm, mid_norm, high_norm, colors, effects, time_idx, xlim, ylim)
-        ###########################################################
-        # AGGIUNTA DEI NUOVI EFFETTI WAVE
-        ###########################################################
         elif pattern_type == "sine":
             self.draw_sine_waves(ax, low_norm, mid_norm, high_norm, colors, effects, time_idx, xlim, ylim)
         elif pattern_type == "square":
             self.draw_square_waves(ax, low_norm, mid_norm, high_norm, colors, effects, time_idx, xlim, ylim)
         elif pattern_type == "sawtooth":
             self.draw_sawtooth_waves(ax, low_norm, mid_norm, high_norm, colors, effects, time_idx, xlim, ylim)
-        ###########################################################
             
-        # ... [codice esistente invariato] ...
+        # Converti in immagine
+        buf = io.BytesIO()
+        fig.savefig(buf, format='png', dpi=dpi, bbox_inches='tight', pad_inches=0)
+        plt.close(fig)
+        buf.seek(0)
+        return buf
 
-    #########################################################################
+    # METODI ESISTENTI PER GLI EFFETTI BASE (placeholder)
+    def draw_classic_waves(self, ax, low, mid, high, colors, effects, time_idx, xlim, ylim):
+        """Disegna onde classiche (placeholder)"""
+        pass
+        
+    def draw_interference_waves(self, ax, low, mid, high, colors, effects, time_idx, xlim, ylim):
+        """Disegna onde di interferenza (placeholder)"""
+        pass
+        
+    def draw_flowing_waves(self, ax, low, mid, high, colors, effects, time_idx, xlim, ylim):
+        """Disegna onde fluide (placeholder)"""
+        pass
+
     # NUOVI METODI PER GLI EFFETTI WAVE AGGIUNTI
-    #########################################################################
-
     def draw_sine_waves(self, ax, low, mid, high, colors, effects, time_idx, xlim, ylim):
         """Onde sinusoidali pulite - versione minimalista"""
         x = np.linspace(0, xlim, 800)
@@ -151,12 +268,8 @@ class AudioVisualizer:
             wave = y_offset + high * intensity * sawtooth_wave(t)
             ax.plot(x, wave, color=colors['high'], linewidth=1.5*high, alpha=0.9)
 
-    # ... [metodi esistenti invariati] ...
-
     def show_generation_report(self, audio_filename, video_title, pattern_type, colors, effects, fps, total_frames, video_quality, aspect_ratio, title_settings, resolution_px):
         """Mostra il report dettagliato della generazione"""
-        # ... [codice esistente invariato] ...
-        
         # Mappa nomi pattern (AGGIUNTA NUOVI PATTERN)
         pattern_names = {
             "waves": "Onde Classiche",
@@ -168,6 +281,7 @@ class AudioVisualizer:
         }
         
         # ... [codice esistente invariato] ...
+        pass
 
 # Configurazione pagina
 st.set_page_config(
@@ -179,8 +293,6 @@ st.set_page_config(
 
 def main():
     st.sidebar.header("🌊 Wave Controls")
-    
-    # ... [codice esistente invariato] ...
     
     # Selezione pattern WAVE (AGGIUNTA NUOVI PATTERN)
     pattern_type = st.sidebar.selectbox(
@@ -197,10 +309,36 @@ def main():
         }[x]
     )
     
-    # ... [codice esistente invariato] ...
-
+    # Controlli colore
+    st.sidebar.subheader("🎨 Personalizzazione Colori")
+    col_low = st.sidebar.color_picker("Basse Frequenze", "#FF0000")
+    col_mid = st.sidebar.color_picker("Medie Frequenze", "#0000FF")
+    col_high = st.sidebar.color_picker("Alte Frequenze", "#FFFFFF")
+    
+    # Effetti speciali
+    st.sidebar.subheader("✨ Effetti Speciali")
+    speed = st.sidebar.slider("Velocità Animazione", 0.05, 0.5, 0.1, 0.01)
+    intensity = st.sidebar.slider("Intensità Onde", 0.5, 2.0, 1.0, 0.1)
+    
+    # Caricamento file audio
+    st.title("🌊 AudioLineTwo - WAVES EDITION")
+    uploaded_file = st.file_uploader("Carica un file audio", type=["wav", "mp3", "ogg"])
+    
     if uploaded_file is not None:
-        # ... [codice esistente invariato] ...
+        # Processa l'audio
+        audio_bytes = uploaded_file.read()
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_file:
+            tmp_file.write(audio_bytes)
+            audio_path = tmp_file.name
+            
+        y, sr = librosa.load(audio_path, sr=None)
+        duration = librosa.get_duration(y=y, sr=sr)
+        
+        # Visualizzazione audio
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.audio(audio_bytes, format='audio/wav')
+            st.write(f"**Durata:** {duration:.2f} secondi")
         
         # Controlli playback (AGGIUNTA NOMI PATTERN)
         with col2:
@@ -213,31 +351,57 @@ def main():
                 "sawtooth": "Onde a Dente di Sega"
             }
             st.write(f"Wave: **{pattern_names.get(pattern_type, pattern_type)}**")
+            st.write(f"Colore Basse: `{col_low}`")
+            st.write(f"Colore Medie: `{col_mid}`")
+            st.write(f"Colore Alte: `{col_high}`")
         
-        # ... [codice esistente invariato] ...
-
+        # Visualizza un frame di esempio
+        st.subheader("Anteprima Pattern")
+        time_idx = st.slider("Seleziona istante temporale", 0.0, duration, duration/2, 0.1)
+        
+        # Crea visualizzatore
+        vis = AudioVisualizer(y, sr)
+        colors = {'low': col_low, 'mid': col_mid, 'high': col_high}
+        effects = {'speed': speed, 'intensity': intensity}
+        
+        # Genera e mostra frame
+        frame = vis.create_pattern_frame(
+            time_idx=time_idx,
+            pattern_type=pattern_type,
+            colors=colors,
+            effects=effects
+        )
+        st.image(frame, use_column_width=True)
+        
     else:
         # Schermata iniziale (AGGIUNTA DESCRIZIONI NUOVI PATTERN)
         st.markdown("""
         ### 🌊 Benvenuto in AudioLineTwo - WAVES EDITION!
-        
-        **🌊 Nuovi Tipi di Wave Aggiunti:**
+        **Un visualizzatore audio avanzato che trasforma il tuo suono in onde ipnotiche.**
         
         ### 📈 **Sinusoidali Pure**
         Onde sinusoidali pulite e minimaliste, perfette per una visualizzazione chiara delle frequenze audio.
+        Ideale per musica classica, ambient e suoni armonici.
         
         ### ⬛ **Onde Quadre**
-        Pattern con transizioni nette e bruschi cambi di direzione, ideali per suoni percussivi e ritmici.
+        Pattern con transizioni nette e bruschi cambi di direzione. 
+        Eccellente per suoni percussivi, ritmici e musica elettronica con bassi marcati.
         
         ### 🔺 **Onde a Dente di Sega**
-        Transizioni ripide e graduali che creano un effetto visivo dinamico, ottimo per suoni synth e arpeggi.
+        Transizioni ripide e graduali che creano un effetto visivo dinamico. 
+        Ottimo per suoni synth, arpeggi e lead elettronici.
         
         **🌊 Altri Tipi di Wave Disponibili:**
-        ### 🌊 **Onde Classiche** ... [descrizione esistente] ...
-        ### 🔄 **Onde Interferenza Strutturate** ... [descrizione esistente] ...
-        ### 💫 **Onde Stratificate Orizzontali** ... [descrizione esistente] ...
+        ### 🌊 **Onde Classiche** 
+        Forme d'onda tradizionali con curve morbide e naturali. Adatte a qualsiasi genere musicale.
         
-        # ... [codice esistente invariato] ...
+        ### 🔄 **Onde Interferenza Strutturate** 
+        Pattern complessi creati dall'interazione tra onde multiple. 
+        Genera effetti visivi ipnotici e geometrici.
+        
+        ### 💫 **Onde Stratificate Orizzontali** 
+        Onde fluide che si muovono orizzontalmente attraverso lo schermo. 
+        Crea un effetto di movimento continuo e rilassante.
         """)
         
         # Demo wave pattern statico (AGGIUNTA NUOVI PATTERN)

@@ -407,7 +407,6 @@ class AudioVisualizer:
             fig = self.create_pattern_frame(
                 time_idx, pattern_type, colors, effects, aspect_ratio, 
                 title_settings, resolution_px=resolution_px, dpi=100
-            )resolution_px, dpi=100
             )
             
             # Salva il frame come immagine
@@ -639,21 +638,6 @@ def main():
             ["Sopra", "Sotto"],
             index=0
         )
-    # Controlli effetti generali
-    st.sidebar.subheader("⚙️ Controlli Generali")
-    
-    # Intensità
-    intensity_multiplier = st.sidebar.slider("Intensità", 0.5, 3.0, 1.0, 0.1, 
-                                            help="Controlla l'intensità generale degli effetti")
-    
-    # Velocità
-    speed_multiplier = st.sidebar.slider("Velocità", 0.1, 2.0, 0.1, 0.05,
-                                       help="Controlla la velocità di movimento delle onde")
-    
-    # Randomness
-    randomness_factor = st.sidebar.slider("Casualità", 0.0, 1.0, 0.0, 0.05,
-                                        help="Aggiunge variazione casuale alle onde")
-    
     else:
         title_h_position = "Centro"
         title_v_position = "Sopra"

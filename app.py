@@ -13,8 +13,6 @@ import subprocess
 from scipy.signal import find_peaks
 from scipy.io import wavfile
 from datetime import datetime
-import matplotlib.colors as mcolors
-import colorsys
 
 # Classe AudioVisualizer migliorata
 class AudioVisualizer:
@@ -111,40 +109,18 @@ class AudioVisualizer:
         
         return low_percent, mid_percent, high_percent
     
-    def get_resolution(self, video_quality, aspect_ratio):
-        """Determina la risoluzione in pixel per il video"""
-        base_resolutions = {
-            "Bassa (960x540)": (960, 540),
-            "Media (1280x720)": (1280, 720), 
-            "Alta (1920x1080)": (1920, 1080)
-        }
-        
-        base_width, base_height = base_resolutions[video_quality]
-        
+    def get_aspect_ratio_settings(self, aspect_ratio):
+        """Determina le impostazioni per l'aspect ratio"""
         if aspect_ratio == "16:9 (Standard)":
-            return (base_width, base_height)
+            return (14, 10), (16, 10)
         elif aspect_ratio == "1:1 (Quadrato)":
-            size = min(base_width, base_height)
-            return (size, size)
+            return (10, 10), (10, 10)
         elif aspect_ratio == "9:16 (Verticale)":
-            return (base_height, base_width)
+            return (10, 14), (10, 16)
         else:
-            return (base_width, base_height)
+            return (14, 10), (16, 10)  # default
     
-    def get_aspect_ratio_limits(self, aspect_ratio):
-        """Determina i limiti degli assi per l'aspect ratio"""
-        if aspect_ratio == "16:9 (Standard)":
-            return (16, 9)
-        elif aspect_ratio == "1:1 (Quadrato)":
-            return (10, 10)
-        elif aspect_ratio == "9:16 (Verticale)":
-            return (9, 16)
-        else:
-            return (16, 9)  # default
-    
-    def create_pattern_frame(self, time_idx, pattern_type="blocks", colors=None, effects=None, 
-                            aspect_ratio="16:9 (Standard)", title_settings=None, 
-                            resolution_px=None, dpi=100):
+    def create_pattern_frame(self, time_idx, pattern_type="blocks", colors=None, effects=None, aspect_ratio="16:9 (Standard)"):
         """Crea un frame del pattern basato sulle frequenze"""
         low_norm, mid_norm, high_norm = self.get_normalized_bands(time_idx)
         
@@ -161,27 +137,14 @@ class AudioVisualizer:
         if effects is None:
             effects = {
                 'size_mult': 1.0, 'movement': 0.5, 'alpha': 0.7, 
-                'glow': True, 'grid': True, 'gradient': True,
-                'special_grid': True
+                'glow': True, 'grid': True, 'gradient': True
             }
         
         # Ottieni impostazioni aspect ratio
-        xlim, ylim = self.get_aspect_ratio_limits(aspect_ratio)
+        figsize, (xlim, ylim) = self.get_aspect_ratio_settings(aspect_ratio)
         
-        # Determina figure size basato su risoluzione
-        if resolution_px and dpi:
-            figsize = (resolution_px[0] / dpi, resolution_px[1] / dpi)
-        else:
-            # Modalità preview
-            base_width = 10
-            figsize = (base_width, base_width * (ylim / xlim))
-        
-        fig, ax = plt.subplots(figsize=figsize, facecolor=colors['bg'], dpi=dpi)
+        fig, ax = plt.subplots(figsize=figsize, facecolor=colors['bg'])
         ax.set_facecolor(colors['bg'])
-        
-        # Disegna la griglia speciale se richiesta
-        if effects['grid'] and effects.get('special_grid', False):
-            self.draw_special_grid(ax, xlim, ylim)
         
         if pattern_type == "blocks":
             self.draw_blocks_pattern(ax, low_norm, mid_norm, high_norm, colors, effects, time_idx, xlim, ylim)
@@ -191,92 +154,24 @@ class AudioVisualizer:
             self.draw_waves_pattern(ax, low_norm, mid_norm, high_norm, colors, effects, time_idx, xlim, ylim)
         elif pattern_type == "vertical":
             self.draw_vertical_lines_pattern(ax, low_norm, mid_norm, high_norm, colors, effects, time_idx, xlim, ylim)
-        elif pattern_type == "glitch":
-            self.draw_glitch_pattern(ax, low_norm, mid_norm, high_norm, colors, effects, time_idx, xlim, ylim)
-            
-        # Aggiungi titolo se specificato
-        if title_settings and title_settings['text']:
-            self.draw_title(ax, title_settings, xlim, ylim)
             
         ax.set_xlim(0, xlim)
         ax.set_ylim(0, ylim)
         ax.axis('off')
         
         return fig
-
-    def draw_special_grid(self, ax, xlim, ylim):
-        """Griglia speciale con linee a spessore differenziato ma stessa lunghezza"""
-        # Linee verticali per separare le colonne
-        ax.axvline(xlim/3, color='white', alpha=0.3, linewidth=1)
-        ax.axvline(2*xlim/3, color='white', alpha=0.3, linewidth=1)
-        
-        # Impostazioni spessori
-        line_styles = [
-            (8, 0.5),  # 8 linee per alte frequenze (spessore base)
-            (4, 1.0),  # 4 linee per medie frequenze (spessore doppio)
-            (2, 2.0)   # 2 linee per basse frequenze (spessore quadruplo)
-        ]
-        
-        # Coordinate X delle colonne
-        column_ranges = [
-            (0, xlim/3),           # Colonna 1: Alte frequenze
-            (xlim/3, 2*xlim/3),    # Colonna 2: Medie frequenze
-            (2*xlim/3, xlim)       # Colonna 3: Basse frequenze
-        ]
-        
-        for col_idx, (num_lines, linewidth) in enumerate(line_styles):
-            x_start, x_end = column_ranges[col_idx]
-            
-            for i in range(1, num_lines + 1):
-                y_pos = i * (ylim / (num_lines + 1))
-                
-                # Disegna la linea orizzontale per l'intera larghezza della colonna
-                ax.plot(
-                    [x_start, x_end], 
-                    [y_pos, y_pos], 
-                    color='white', 
-                    linewidth=linewidth,
-                    alpha=0.2
-                )
-    
-    def draw_title(self, ax, title_settings, xlim, ylim):
-        """Disegna il titolo in base alle impostazioni di posizione"""
-        h_pos = title_settings['h_position']
-        v_pos = title_settings['v_position']
-        
-        # Calcola le coordinate in base alla posizione
-        if h_pos == "Sinistra":
-            x = 0.05 * xlim
-            ha = 'left'
-        elif h_pos == "Destra":
-            x = 0.95 * xlim
-            ha = 'right'
-        else:  # Centro
-            x = 0.5 * xlim
-            ha = 'center'
-        
-        if v_pos == "Sotto":
-            y = 0.05 * ylim
-            va = 'bottom'
-        else:  # Sopra
-            y = 0.95 * ylim
-            va = 'top'
-        
-        ax.text(
-            x, y, 
-            title_settings['text'],
-            fontsize=title_settings['fontsize'],
-            color=title_settings['color'],
-            ha=ha,
-            va=va,
-            alpha=0.9,
-            fontweight='bold'
-        )
     
     def draw_blocks_pattern(self, ax, low, mid, high, colors, effects, time_idx, xlim, ylim):
         """Pattern a blocchi colorati"""
         size_mult = effects['size_mult']
         
+        # Draw grid if enabled
+        if effects['grid']:
+            for x in np.arange(0, xlim, 1):
+                ax.axvline(x, color='white', alpha=0.1, linewidth=0.3)
+            for y in np.arange(0, ylim, 1):
+                ax.axhline(y, color='white', alpha=0.1, linewidth=0.3)
+
         # Blocchi grandi per frequenze basse
         for i in range(int(low * 15)):
             x = np.random.uniform(0, xlim)
@@ -338,6 +233,13 @@ class AudioVisualizer:
         """Pattern di linee orizzontali"""
         size_mult = effects['size_mult']
         
+        # Draw grid if enabled
+        if effects['grid']:
+            for x in np.arange(0, xlim, 1):
+                ax.axvline(x, color='white', alpha=0.1, linewidth=0.3)
+            for y in np.arange(0, ylim, 1):
+                ax.axhline(y, color='white', alpha=0.1, linewidth=0.3)
+
         # Linee spesse per basse
         for i in range(int(low * 8)):
             y_pos = np.random.uniform(1, ylim-1)
@@ -397,6 +299,13 @@ class AudioVisualizer:
         x = np.linspace(0, xlim, 300)
         size_mult = effects['size_mult']
         
+        # Draw grid if enabled
+        if effects['grid']:
+            for x in np.arange(0, xlim, 1):
+                ax.axvline(x, color='white', alpha=0.1, linewidth=0.3)
+            for y in np.arange(0, ylim, 1):
+                ax.axhline(y, color='white', alpha=0.1, linewidth=0.3)
+
         # Usa l'indice temporale per sincronizzare le onde con la musica
         time_offset = time_idx * 0.1
         
@@ -436,208 +345,69 @@ class AudioVisualizer:
             
             ax.plot(x, wave, color=colors['high'], linewidth=(1.5+high)*size_mult, alpha=alpha)
     
-    def adjust_color_brightness(self, color, factor):
-        """Regola la luminosità di un colore usando colorsys"""
-        r, g, b = mcolors.to_rgb(color)
-        h, l, s = colorsys.rgb_to_hls(r, g, b)
-        l = max(0, min(1, factor))
-        r, g, b = colorsys.hls_to_rgb(h, l, s)
-        return (r, g, b)
-    
     def draw_vertical_lines_pattern(self, ax, low, mid, high, colors, effects, time_idx, xlim, ylim):
-        """Pattern: VU-meter a colonne con barre orizzontali progressivo"""
-        # Dividi lo spazio in 3 colonne
-        col_width = xlim / 3.0
+        """Pattern: Linee verticali dinamiche - SENZA PALLINI"""
+        size_mult = effects['size_mult']
         
-        # Definizione colonne: (energia, colore, num_barre, nome_banda)
-        columns = [
-            (high, colors['high'], 8, "high"),  # Colonna 1: Alte frequenze
-            (mid, colors['mid'], 4, "mid"),     # Colonna 2: Medie frequenze
-            (low, colors['low'], 2, "low")      # Colonna 3: Basse frequenze
-        ]
-        
-        # Spaziatura tra le barre
-        bar_spacing = ylim * 0.02
-        
-        for col_idx, (energy, color, num_bars, band_name) in enumerate(columns):
-            x_start = col_idx * col_width
-            x_end = x_start + col_width
-            
-            # Calcola altezza barre e spaziamento
-            bar_height = (ylim / 15) * effects['size_mult']
-            total_height = num_bars * bar_height + (num_bars - 1) * bar_spacing
-            start_y = (ylim - total_height) / 2  # Centra verticalmente
-            
-            for bar_idx in range(num_bars):
-                y_pos = start_y + bar_idx * (bar_height + bar_spacing)
-                
-                # Calcola la larghezza della barra in base all'energia
-                bar_length = col_width * energy
-                
-                # Calcola luminosità in base alla posizione (barre più alte più luminose)
-                brightness = 0.4 + 0.6 * (bar_idx / num_bars)
-                bar_color = self.adjust_color_brightness(color, brightness)
-                
-                # Effetto pulsante per le barre completamente attive
-                pulse_factor = 0.8 + 0.2 * np.sin(time_idx * 0.5) if bar_length > col_width * 0.95 else 1.0
-                
-                # Crea la barra orizzontale
-                rect = Rectangle(
-                    (x_start, y_pos), 
-                    bar_length * pulse_factor, 
-                    bar_height,
-                    facecolor=bar_color,
-                    edgecolor='white' if effects['glow'] else 'none',
-                    linewidth=1.5 if effects['glow'] else 0,
-                    alpha=effects['alpha']
-                )
-                ax.add_patch(rect)
-                
-                # Crea sfondo della barra (contorno)
-                bg_rect = Rectangle(
-                    (x_start, y_pos), 
-                    col_width, 
-                    bar_height,
-                    fill=False,
-                    edgecolor='white',
-                    linewidth=0.8,
-                    alpha=0.3
-                )
-                ax.add_patch(bg_rect)
-                
-                # Aggiungi effetto glow per le barre completamente attive
-                if bar_length > col_width * 0.9 and effects['glow']:
-                    glow_rect = Rectangle(
-                        (x_start, y_pos), 
-                        bar_length * pulse_factor, 
-                        bar_height,
-                        fill=False,
-                        edgecolor='white',
-                        linewidth=3.0,
-                        alpha=0.5 * effects['alpha']
-                    )
-                    ax.add_patch(glow_rect)
-    
-    def draw_glitch_pattern(self, ax, low, mid, high, colors, effects, time_idx, xlim, ylim):
-        """Pattern Glitch Art con blocchi che si spostano e distorcono"""
-        # Configurazione griglia
-        num_blocks_x = 20
-        num_blocks_y = 15
-        block_width = xlim / num_blocks_x
-        block_height = ylim / num_blocks_y
-        
-        # Colori disponibili (neon)
-        neon_colors = [colors['low'], colors['mid'], colors['high'], '#FF00FF', '#00FFFF', '#FFFF00']
-        
-        # Effetti di distorsione basati sulle frequenze
-        distortion_low = low * 0.5 * effects['size_mult']
-        distortion_mid = mid * 0.8 * effects['size_mult']
-        distortion_high = high * 1.2 * effects['size_mult']
-        
-        # Blocchi principali
-        for i in range(num_blocks_x):
-            for j in range(num_blocks_y):
-                # Posizione base
-                x = i * block_width
-                y = j * block_height
-                
-                # Distorsione basata sull'audio
-                dx = np.random.uniform(-distortion_low, distortion_low) * block_width
-                dy = np.random.uniform(-distortion_mid, distortion_mid) * block_height
-                
-                # Effetto di stretch
-                stretch_w = 1 + distortion_high * np.random.uniform(0, 0.5)
-                stretch_h = 1 + distortion_low * np.random.uniform(0, 0.3)
-                
-                width = block_width * stretch_w
-                height = block_height * stretch_h
-                
-                # Scegli colore casuale dalla palette neon
-                color = np.random.choice(neon_colors)
-                
-                # Alpha dinamico
-                alpha = effects['alpha'] * np.random.uniform(0.6, 1.0)
-                
-                # Crea blocco
-                rect = Rectangle(
-                    (x + dx, y + dy), 
-                    width, 
-                    height,
-                    facecolor=color,
-                    edgecolor='white' if effects['glow'] else 'none',
-                    linewidth=0.5,
-                    alpha=alpha
-                )
-                ax.add_patch(rect)
-        
-        # Effetto scanlines (linee orizzontali)
+        # Draw grid if enabled
         if effects['grid']:
-            scanline_alpha = 0.1 + distortion_high * 0.1
-            for j in range(num_blocks_y * 2):
-                y_pos = j * (block_height / 2)
-                ax.axhline(y_pos, color='white', alpha=scanline_alpha, linewidth=0.3)
-        
-        # Effetto pixel drift (spostamento di blocchi)
-        drift_blocks = int(10 + distortion_mid * 20)
-        for _ in range(drift_blocks):
-            i = np.random.randint(0, num_blocks_x)
-            j = np.random.randint(0, num_blocks_y)
-            
-            x = i * block_width
-            y = j * block_height
-            
-            # Distorsione più pronunciata
-            dx = np.random.uniform(-1, 1) * distortion_high * block_width * 2
-            dy = np.random.uniform(-1, 1) * distortion_mid * block_height * 1.5
-            
-            # Dimensione casuale
-            width = block_width * np.random.uniform(0.8, 1.5)
-            height = block_height * np.random.uniform(0.8, 1.5)
-            
-            # Scegli colore
-            color = np.random.choice(neon_colors)
-            alpha = effects['alpha'] * np.random.uniform(0.7, 1.0)
-            
-            # Crea blocco fluttuante
-            rect = Rectangle(
-                (x + dx, y + dy), 
-                width, 
-                height,
-                facecolor=color,
-                edgecolor='white',
-                linewidth=0.8,
-                alpha=alpha
-            )
-            ax.add_patch(rect)
-        
-        # Effetto glitch (linee di distorsione verticali)
-        glitch_lines = int(5 + distortion_high * 15)
-        for _ in range(glitch_lines):
+            for x in np.arange(0, xlim, 1):
+                ax.axvline(x, color='white', alpha=0.1, linewidth=0.3)
+            for y in np.arange(0, ylim, 1):
+                ax.axhline(y, color='white', alpha=0.1, linewidth=0.3)
+
+        # Linee spesse per basse frequenze
+        for i in range(int(low * 12)):
             x_pos = np.random.uniform(0, xlim)
-            offset = distortion_high * np.random.uniform(-0.05, 0.05) * ylim
+            height = np.random.uniform(ylim*0.1, ylim*0.8) * low
+            y_start = np.random.uniform(0, ylim - height)
+            alpha = np.clip(0.7 * effects['alpha'], 0.0, 1.0)
             
-            ax.plot(
-                [x_pos, x_pos], 
-                [0, ylim], 
-                color=np.random.choice(neon_colors), 
-                linewidth=np.random.uniform(0.5, 2.0),
-                alpha=np.random.uniform(0.1, 0.3)
-            )
+            # Glow effect: draw white underlay
+            if effects['glow']:
+                ax.plot([x_pos, x_pos], [y_start, y_start + height], 
+                       color='white', 
+                       linewidth=6*low*size_mult + 1.5, 
+                       alpha=alpha * 0.5)
             
-            # Effetto di spostamento
-            if np.random.rand() > 0.7:
-                ax.plot(
-                    [x_pos, x_pos], 
-                    [offset, ylim + offset], 
-                    color='white', 
-                    linewidth=0.8,
-                    alpha=0.4,
-                    linestyle='dashed'
-                )
+            ax.plot([x_pos, x_pos], [y_start, y_start + height], 
+                   color=colors['low'], linewidth=6*low*size_mult, alpha=alpha)
+        
+        # Linee medie per frequenze medie
+        for i in range(int(mid * 18)):
+            x_pos = np.random.uniform(0, xlim)
+            height = np.random.uniform(ylim*0.1, ylim*0.6) * mid
+            y_start = np.random.uniform(0, ylim - height)
+            alpha = np.clip(0.8 * effects['alpha'], 0.0, 1.0)
+            
+            # Glow effect: draw white underlay
+            if effects['glow']:
+                ax.plot([x_pos, x_pos], [y_start, y_start + height], 
+                       color='white', 
+                       linewidth=3*mid*size_mult + 1, 
+                       alpha=alpha * 0.5)
+            
+            ax.plot([x_pos, x_pos], [y_start, y_start + height], 
+                   color=colors['mid'], linewidth=3*mid*size_mult, alpha=alpha)
+        
+        # Linee sottili per alte frequenze - SENZA SCATTER/PALLINI
+        for i in range(int(high * 25)):
+            x_pos = np.random.uniform(0, xlim)
+            height = np.random.uniform(ylim*0.05, ylim*0.4) * high
+            y_start = np.random.uniform(0, ylim - height)
+            alpha = np.clip(0.9 * effects['alpha'], 0.0, 1.0)
+            
+            # Glow effect: draw white underlay
+            if effects['glow']:
+                ax.plot([x_pos, x_pos], [y_start, y_start + height], 
+                       color='white', 
+                       linewidth=(1+high)*size_mult + 0.8, 
+                       alpha=alpha * 0.5)
+            
+            ax.plot([x_pos, x_pos], [y_start, y_start + height], 
+                   color=colors['high'], linewidth=(1+high)*size_mult, alpha=alpha)
     
-    def create_video_no_audio(self, output_path, pattern_type, colors, effects, fps, 
-                             aspect_ratio="16:9 (Standard)", video_quality="Media (1280x720)", 
-                             title_settings=None):
+    def create_video_no_audio(self, output_path, pattern_type, colors, effects, fps, aspect_ratio="16:9 (Standard)"):
         """Crea un video senza audio"""
         # Reset statistiche colori
         self.color_statistics = {
@@ -646,9 +416,6 @@ class AudioVisualizer:
             'high_total': 0,
             'total_energy': 0
         }
-        
-        # Calcola la risoluzione finale
-        resolution_px = self.get_resolution(video_quality, aspect_ratio)
         
         # Calcola il numero totale di frame
         total_frames = int(self.duration * fps)
@@ -670,15 +437,12 @@ class AudioVisualizer:
             # Trova l'indice temporale più vicino
             time_idx = np.argmin(np.abs(self.times - current_time))
             
-            # Crea frame con la risoluzione corretta
-            fig = self.create_pattern_frame(
-                time_idx, pattern_type, colors, effects, aspect_ratio, 
-                title_settings, resolution_px=resolution_px, dpi=100
-            )
+            # Crea frame
+            fig = self.create_pattern_frame(time_idx, pattern_type, colors, effects, aspect_ratio)
             
             # Salva il frame come immagine
             frame_path = os.path.join(temp_dir, f"frame_{frame_idx:04d}.png")
-            fig.savefig(frame_path, bbox_inches='tight', pad_inches=0)
+            fig.savefig(frame_path, dpi=100, bbox_inches='tight', pad_inches=0)
             plt.close(fig)
             frame_paths.append(frame_path)
             
@@ -699,18 +463,15 @@ class AudioVisualizer:
         status_text.text("✅ Video senza audio creato")
         progress_bar.empty()
         
-        return total_frames, resolution_px
+        return total_frames
     
     def create_video_with_audio(self, output_path, pattern_type, colors, effects, fps, 
                                audio_filename="Unknown Track", video_quality="Media (1280x720)", 
-                               aspect_ratio="16:9 (Standard)", video_title="My Audio Visual", title_settings=None):
+                               aspect_ratio="16:9 (Standard)", video_title="My Audio Visual"):
         """Crea un video completo con audio e genera report finale"""
         # Crea un video temporaneo senza audio
         temp_video_path = output_path.replace('.mp4', '_no_audio.mp4')
-        total_frames, resolution_px = self.create_video_no_audio(
-            temp_video_path, pattern_type, colors, effects, fps, 
-            aspect_ratio, video_quality, title_settings
-        )
+        total_frames = self.create_video_no_audio(temp_video_path, pattern_type, colors, effects, fps, aspect_ratio)
         
         # Crea un file audio temporaneo
         temp_audio_path = output_path.replace('.mp4', '.wav')
@@ -743,8 +504,7 @@ class AudioVisualizer:
             # Genera e mostra il report finale
             self.show_generation_report(audio_filename, video_title, pattern_type, 
                                       colors, effects, fps, total_frames, 
-                                      video_quality, aspect_ratio, title_settings,
-                                      resolution_px)
+                                      video_quality, aspect_ratio)
             
             return True
             
@@ -758,21 +518,38 @@ class AudioVisualizer:
             if os.path.exists(temp_audio_path):
                 os.remove(temp_audio_path)
     
-    def show_generation_report(self, audio_filename, video_title, pattern_type, colors, effects, fps, total_frames, video_quality, aspect_ratio, title_settings, resolution_px):
+    def show_generation_report(self, audio_filename, video_title, pattern_type, colors, effects, fps, total_frames, video_quality, aspect_ratio):
         """Mostra il report dettagliato della generazione"""
         # Calcola le percentuali dei colori
         low_percent, mid_percent, high_percent = self.get_color_percentages()
         
-        # Formatta la risoluzione
-        final_resolution = f"{resolution_px[0]}x{resolution_px[1]}"
+        # Determina risoluzione basata su qualità e aspect ratio
+        base_resolutions = {
+            "Bassa (960x540)": (960, 540),
+            "Media (1280x720)": (1280, 720), 
+            "Alta (1920x1080)": (1920, 1080)
+        }
+        
+        base_width, base_height = base_resolutions[video_quality]
+        
+        # Calcola risoluzione finale basata su aspect ratio
+        if aspect_ratio == "16:9 (Standard)":
+            final_resolution = f"{base_width}x{base_height}"
+        elif aspect_ratio == "1:1 (Quadrato)":
+            # Usa l'altezza come base per il quadrato
+            final_resolution = f"{base_height}x{base_height}"
+        elif aspect_ratio == "9:16 (Verticale)":
+            # Inverti larghezza e altezza
+            final_resolution = f"{base_height}x{base_width}"
+        else:
+            final_resolution = f"{base_width}x{base_height}"
         
         # Mappa nomi pattern
         pattern_names = {
             "blocks": "Blocchi dinamici",
             "lines": "Linee orizzontali",
             "waves": "Onde sinusoidali",
-            "vertical": "VU-meter a colonne",
-            "glitch": "Glitch Art Digitale"
+            "vertical": "Linee verticali"
         }
         
         # Determina intensità basata sui moltiplicatori
@@ -782,12 +559,6 @@ class AudioVisualizer:
             intensity = "Alta"
         else:
             intensity = "Media"
-        
-        # Prepara info titolo
-        title_info = "❌ Disabilitato"
-        if title_settings and title_settings['text']:
-            title_position = f"{title_settings['v_position']} {title_settings['h_position']}"
-            title_info = f"{title_settings['text']} ({title_position}, {title_settings['fontsize']}px)"
         
         # Crea il report
         report = f"""
@@ -803,15 +574,15 @@ class AudioVisualizer:
 
 ### 🌈 Color Distribution by Frequency Band:
 - **🔴 Low Frequencies (20-250Hz):** {low_percent:.1f}%
-- **🔵 Mid Frequenze (250-4000Hz):** {mid_percent:.1f}%  
-- **⚪ High Frequenze (4000-20000Hz):** {high_percent:.1f}%
+- **🔵 Mid Frequencies (250-4000Hz):** {mid_percent:.1f}%  
+- **⚪ High Frequencies (4000-20000Hz):** {high_percent:.1f}%
 
 ### ⚙️ Visual Configuration:
 - **🎭 Style:** {pattern_names.get(pattern_type, pattern_type.title())}
 - **🎨 Theme:** Custom  
 - **💪 Intensity:** {intensity}
 - **📐 Format:** {aspect_ratio.split(' ')[0]} | **🎬 FPS:** {fps}
-- **📝 Title:** {title_info}
+- **🔊 Volume Offset:** 1.0
 - **🖼️ Total Frames:** ~{total_frames:,}
 
 ### 🔧 Effects Applied:
@@ -821,7 +592,6 @@ class AudioVisualizer:
 - **✨ Glow Effect:** {'✅ Enabled' if effects['glow'] else '❌ Disabled'}
 - **🔲 Grid Mode:** {'✅ Enabled' if effects['grid'] else '❌ Disabled'}
 - **🌈 Gradients:** {'✅ Enabled' if effects['gradient'] else '❌ Disabled'}
-- **🔳 Special Grid:** {'✅ Enabled' if effects.get('special_grid', False) else '❌ Disabled'}
 
 ---
 *Generated by **AudioLineTwo** - BY LOOP507*  
@@ -874,7 +644,7 @@ def main():
     # Selezione pattern
     pattern_type = st.sidebar.selectbox(
         "Tipo di Pattern",
-        ["blocks", "lines", "waves", "vertical", "glitch"],
+        ["blocks", "lines", "waves", "vertical"],
         help="Scegli il tipo di visualizzazione"
     )
     
@@ -887,27 +657,6 @@ def main():
     with col2:
         color_high = st.color_picker("Freq. Acute", "#FFFFFF", help="Colore per frequenze acute (4000-20000Hz)")
         bg_color = st.color_picker("Sfondo", "#000000", help="Colore di sfondo")
-    
-    # Controlli per il titolo
-    st.sidebar.subheader("📝 Impostazioni Titolo")
-    title_enabled = st.sidebar.checkbox("Mostra Titolo", value=True)
-    title_text = st.sidebar.text_input("Testo Titolo", video_title)
-    title_font_size = st.sidebar.slider("Dimensione Font", 10, 50, 20)
-    title_color = st.sidebar.color_picker("Colore Titolo", "#FFFFFF")
-    
-    # Posizione orizzontale
-    title_h_position = st.sidebar.selectbox(
-        "Posizione Orizzontale",
-        ["Sinistra", "Centro", "Destra"],
-        index=1
-    )
-    
-    # Posizione verticale
-    title_v_position = st.sidebar.selectbox(
-        "Posizione Verticale",
-        ["Sopra", "Sotto"],
-        index=0
-    )
     
     # Controlli effetti
     st.sidebar.subheader("⚙️ Controlli Effetti")
@@ -927,29 +676,17 @@ def main():
     # Grid structure
     grid_mode = st.sidebar.checkbox("Modalità Griglia", value=True)
     
-    # Special Grid
-    special_grid = st.sidebar.checkbox("Griglia Speciale", value=True)
-    
     # Sfumature
     gradient_mode = st.sidebar.checkbox("Sfumature", value=True)
     
     # FPS per la visualizzazione
     frame_rate = st.sidebar.selectbox("FPS", [10, 15, 20, 30], index=2)
     
-    # Qualità video
+    # Qualità video MODIFICATA
     video_quality = st.sidebar.selectbox("Qualità Video", ["Bassa (960x540)", "Media (1280x720)", "Alta (1920x1080)"], index=1)
     
-    # Aspect Ratio personalizzato
+    # Aspect Ratio personalizzato NUOVO
     aspect_ratio = st.sidebar.selectbox("Aspect Ratio", ["16:9 (Standard)", "1:1 (Quadrato)", "9:16 (Verticale)"], index=0)
-    
-    # Prepara impostazioni titolo
-    title_settings = {
-        'text': title_text if title_enabled else "",
-        'fontsize': title_font_size,
-        'color': title_color,
-        'h_position': title_h_position,
-        'v_position': title_v_position
-    }
     
     if uploaded_file is not None:
         with st.spinner("🎵 Caricamento e analisi audio..."):
@@ -977,8 +714,7 @@ def main():
                 'alpha': alpha_base,
                 'glow': glow_effect,
                 'grid': grid_mode,
-                'gradient': gradient_mode,
-                'special_grid': special_grid
+                'gradient': gradient_mode
             }
             
         st.success(f"✅ Audio caricato! Durata: {duration:.1f}s, Sample Rate: {sr}Hz")
@@ -1015,7 +751,7 @@ def main():
                 time_idx = np.argmin(np.abs(visualizer.times - current_time))
                 
                 # Crea frame
-                fig = visualizer.create_pattern_frame(time_idx, pattern_type, colors, effects, aspect_ratio, title_settings)
+                fig = visualizer.create_pattern_frame(time_idx, pattern_type, colors, effects, aspect_ratio)
                 
                 # Mostra frame
                 placeholder.pyplot(fig, clear_figure=True)
@@ -1044,7 +780,7 @@ def main():
                 # Crea il video con audio
                 success = visualizer.create_video_with_audio(
                     video_path, pattern_type, colors, effects, frame_rate, 
-                    audio_filename, video_quality, aspect_ratio, video_title, title_settings
+                    audio_filename, video_quality, aspect_ratio, video_title
                 )
                 
                 if success:
@@ -1085,24 +821,19 @@ def main():
         - **📐 Aspect Ratio personalizzati:** 16:9, 1:1 (Quadrato), 9:16 (Verticale)
         - **🎯 Qualità video ottimizzata:** 960x540, 1280x720, 1920x1080
         - **🎭 Pattern verticale migliorato** senza elementi di disturbo
-        - **📝 Titolo personalizzabile** con posizionamento
-        - **🔳 Griglia speciale** con struttura a 3 colonne
-        - **🌀 Nuovo pattern Glitch Art** con distorsioni digitali
         
         **Come usare:**
         1. Carica un file audio dalla sidebar
-        2. Scehi il tipo di pattern e personalizza i colori
-        3. Configura il titolo e la sua posizione
-        4. Seleziona qualità video and aspect ratio desiderati
-        5. Configura gli effetti e la qualità
-        6. Crea il video per vedere il report completo!
+        2. Scegli il tipo di pattern e personalizza i colori
+        3. Seleziona qualità video e aspect ratio desiderati
+        4. Configura gli effetti e la qualità
+        5. Crea il video per vedere il report completo!
         
         **Pattern disponibili:**
         - **Blocks**: Blocchi rettangolari strutturati
         - **Lines**: Linee orizzontali di spessore variabile
         - **Waves**: Forme ondulatorie dinamiche
-        - **Vertical**: VU-meter a colonne con barre orizzontali
-        - **Glitch**: Arte digitale con distorsioni e effetti glitch
+        - **Vertical**: Linee verticali pulite (senza pallini)
         
         **📊 Il report finale includerà:**
         - Distribuzione percentuale precisa dei colori utilizzati

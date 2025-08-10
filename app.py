@@ -236,13 +236,14 @@ class AudioVisualizer:
     def draw_sawtooth_waves(self, ax, low, mid, high, colors, effects, time_idx, xlim, ylim):
         """Onde a dente di sega con salti bruschi"""
         x = np.linspace(0, xlim, 1200)
+        # Correzione: rimossa la parentesi finale extra qui sotto
         time_offset = time_idx * effects.get('speed', 0.1)
         intensity = effects.get('intensity', 1.0)
         
         # Funzione per generare onde a dente di sega
         def sawtooth_wave(t):
             """Genera un'onda a dente di sega"""
-            return 2 * (t/(2*np.pi) - np.floor(t/(2*np.pi) + 0.5)
+            return 2 * (t/(2*np.pi) - np.floor(t/(2*np.pi) + 0.5))
         
         # Onde basse - lente e ampie
         for i in range(3):
@@ -256,7 +257,7 @@ class AudioVisualizer:
         for i in range(4):
             y_offset = ylim*0.15 + i * (ylim*0.2)
             freq = 0.4 + i * 0.2
-            t = 2 * np.pi * freq * x/xlim + time_offset*1.7)
+            t = 2 * np.pi * freq * x/xlim + time_offset*1.7
             wave = y_offset + mid * intensity * sawtooth_wave(t)
             ax.plot(x, wave, color=colors['mid'], linewidth=3*mid, alpha=0.7)
         
@@ -264,7 +265,7 @@ class AudioVisualizer:
         for i in range(5):
             y_offset = ylim*0.1 + i * (ylim*0.18)
             freq = 0.9 + i * 0.35
-            t = 2 * np.pi * freq * x/xlim + time_offset*2.5)
+            t = 2 * np.pi * freq * x/xlim + time_offset*2.5
             wave = y_offset + high * intensity * sawtooth_wave(t)
             ax.plot(x, wave, color=colors['high'], linewidth=1.5*high, alpha=0.9)
 
@@ -392,15 +393,12 @@ def main():
         Ottimo per suoni synth, arpeggi e lead elettronici.
         
         **🌊 Altri Tipi di Wave Disponibili:**
-        ### 🌊 **Onde Classiche** 
-        Forme d'onda tradizionali con curve morbide e naturali. Adatte a qualsiasi genere musicale.
+        ### 🌊 **Onde Classiche** Forme d'onda tradizionali con curve morbide e naturali. Adatte a qualsiasi genere musicale.
         
-        ### 🔄 **Onde Interferenza Strutturate** 
-        Pattern complessi creati dall'interazione tra onde multiple. 
+        ### 🔄 **Onde Interferenza Strutturate** Pattern complessi creati dall'interazione tra onde multiple. 
         Genera effetti visivi ipnotici e geometrici.
         
-        ### 💫 **Onde Stratificate Orizzontali** 
-        Onde fluide che si muovono orizzontalmente attraverso lo schermo. 
+        ### 💫 **Onde Stratificate Orizzontali** Onde fluide che si muovono orizzontalmente attraverso lo schermo. 
         Crea un effetto di movimento continuo e rilassante.
         """)
         
@@ -439,7 +437,8 @@ def main():
             freq = 0.6 + i * 0.3
             t = 2 * np.pi * freq * x/16
             # Funzione corretta per onda a dente di sega
-            y = 2 + 0.8 * (2 * (t/(2*np.pi) - np.floor(t/(2*np.pi)) + 0.5)
+            # Correzione: rimossa la parentesi finale extra qui sotto
+            y = 2 + 0.8 * (2 * (t/(2*np.pi) - np.floor(t/(2*np.pi) + 0.5)))
             ax3.plot(x, y, color=['#FF0000', '#0000FF', '#FFFFFF'][i], linewidth=3, alpha=0.8)
         ax3.set_xlim(0, 16)
         ax3.set_ylim(0, 4)

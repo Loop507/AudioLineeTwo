@@ -165,13 +165,6 @@ class AudioVisualizer:
         """Pattern a blocchi colorati"""
         size_mult = effects['size_mult']
         
-        # Draw grid if enabled
-        if effects['grid']:
-            for x in np.arange(0, xlim, 1):
-                ax.axvline(x, color='white', alpha=0.1, linewidth=0.3)
-            for y in np.arange(0, ylim, 1):
-                ax.axhline(y, color='white', alpha=0.1, linewidth=0.3)
-
         # Blocchi grandi per frequenze basse
         for i in range(int(low * 15)):
             x = np.random.uniform(0, xlim)
@@ -181,14 +174,8 @@ class AudioVisualizer:
             color = colors['low']
             alpha = np.clip((0.3 + low * 0.7) * effects['alpha'], 0.0, 1.0)
             
-            # Glow effect settings
-            glow = effects['glow']
-            edgecolor = 'white' if glow else 'none'
-            linewidth = 1.0 if glow else 0
-            
             rect = Rectangle((x, y), width, height, 
-                           facecolor=color, alpha=alpha, 
-                           edgecolor=edgecolor, linewidth=linewidth)
+                           facecolor=color, alpha=alpha, edgecolor='none')
             ax.add_patch(rect)
         
         # Blocchi medi per frequenze medie
@@ -200,14 +187,8 @@ class AudioVisualizer:
             color = colors['mid']
             alpha = np.clip((0.4 + mid * 0.6) * effects['alpha'], 0.0, 1.0)
             
-            # Glow effect settings
-            glow = effects['glow']
-            edgecolor = 'white' if glow else 'none'
-            linewidth = 1.0 if glow else 0
-            
             rect = Rectangle((x, y), width, height, 
-                           facecolor=color, alpha=alpha, 
-                           edgecolor=edgecolor, linewidth=linewidth)
+                           facecolor=color, alpha=alpha, edgecolor='none')
             ax.add_patch(rect)
         
         # Blocchi piccoli per frequenze alte
@@ -219,79 +200,42 @@ class AudioVisualizer:
             color = colors['high']
             alpha = np.clip((0.5 + high * 0.5) * effects['alpha'], 0.0, 1.0)
             
-            # Glow effect settings
-            glow = effects['glow']
-            edgecolor = 'white' if glow else 'none'
-            linewidth = 1.0 if glow else 0
-            
             rect = Rectangle((x, y), width, height, 
-                           facecolor=color, alpha=alpha, 
-                           edgecolor=edgecolor, linewidth=linewidth)
+                           facecolor=color, alpha=alpha, edgecolor='none')
             ax.add_patch(rect)
     
     def draw_lines_pattern(self, ax, low, mid, high, colors, effects, time_idx, xlim, ylim):
         """Pattern di linee orizzontali"""
         size_mult = effects['size_mult']
         
-        # Draw grid if enabled
-        if effects['grid']:
-            for x in np.arange(0, xlim, 1):
-                ax.axvline(x, color='white', alpha=0.1, linewidth=0.3)
-            for y in np.arange(0, ylim, 1):
-                ax.axhline(y, color='white', alpha=0.1, linewidth=0.3)
-
         # Linee spesse per basse
         for i in range(int(low * 8)):
-            y_pos = np.random.uniform(1, ylim-1)
+            y = np.random.uniform(1, ylim-1)
             x_start = np.random.uniform(0, xlim*0.25)
             x_end = x_start + np.random.uniform(xlim*0.25, xlim*0.75) * low * size_mult
             x_end = min(x_end, xlim)
             alpha = np.clip(0.7 * effects['alpha'], 0.0, 1.0)
-            
-            # Glow effect: draw white underlay
-            if effects['glow']:
-                ax.plot([x_start, x_end], [y_pos, y_pos], 
-                       color='white', 
-                       linewidth=8*low*size_mult + 2, 
-                       alpha=alpha * 0.5)
-            
-            ax.plot([x_start, x_end], [y_pos, y_pos], 
+            ax.plot([x_start, x_end], [y, y], 
                    color=colors['low'], linewidth=8*low*size_mult, alpha=alpha)
         
         # Linee medie
         for i in range(int(mid * 12)):
-            y_pos = np.random.uniform(1, ylim-1)
+            y = np.random.uniform(1, ylim-1)
             x_start = np.random.uniform(0, xlim*0.375)
             x_end = x_start + np.random.uniform(xlim*0.19, xlim*0.625) * mid * size_mult
             x_end = min(x_end, xlim)
             alpha = np.clip(0.6 * effects['alpha'], 0.0, 1.0)
-            
-            # Glow effect: draw white underlay
-            if effects['glow']:
-                ax.plot([x_start, x_end], [y_pos, y_pos], 
-                       color='white', 
-                       linewidth=4*mid*size_mult + 1.5, 
-                       alpha=alpha * 0.5)
-            
-            ax.plot([x_start, x_end], [y_pos, y_pos], 
+            ax.plot([x_start, x_end], [y, y], 
                    color=colors['mid'], linewidth=4*mid*size_mult, alpha=alpha)
         
         # Linee sottili per acute
         for i in range(int(high * 20)):
-            y_pos = np.random.uniform(1, ylim-1)
+            y = np.random.uniform(1, ylim-1)
             x_start = np.random.uniform(0, xlim*0.5)
             x_end = x_start + np.random.uniform(xlim*0.125, xlim*0.5) * high * size_mult
             x_end = min(x_end, xlim)
             alpha = np.clip(0.8 * effects['alpha'], 0.0, 1.0)
-            
-            # Glow effect: draw white underlay
-            if effects['glow']:
-                ax.plot([x_start, x_end], [y_pos, y_pos], 
-                       color='white', 
-                       linewidth=(1+high)*size_mult + 1, 
-                       alpha=alpha * 0.5)
-            
-            ax.plot([x_start, x_end], [y_pos, y_pos], 
+            ax.plot([x_start, x_end], [y, y], 
                    color=colors['high'], linewidth=(1+high)*size_mult, alpha=alpha)
     
     def draw_waves_pattern(self, ax, low, mid, high, colors, effects, time_idx, xlim, ylim):
@@ -299,13 +243,6 @@ class AudioVisualizer:
         x = np.linspace(0, xlim, 300)
         size_mult = effects['size_mult']
         
-        # Draw grid if enabled
-        if effects['grid']:
-            for x in np.arange(0, xlim, 1):
-                ax.axvline(x, color='white', alpha=0.1, linewidth=0.3)
-            for y in np.arange(0, ylim, 1):
-                ax.axhline(y, color='white', alpha=0.1, linewidth=0.3)
-
         # Usa l'indice temporale per sincronizzare le onde con la musica
         time_offset = time_idx * 0.1
         
@@ -314,11 +251,6 @@ class AudioVisualizer:
             y_offset = ylim*0.2 + i * (ylim*0.25)
             wave = y_offset + low * np.sin(2 * np.pi * (0.3 + i * 0.2) * x/xlim + time_offset)
             alpha = np.clip(0.8 * effects['alpha'], 0.0, 1.0)
-            
-            # Glow effect: draw white underlay
-            if effects['glow']:
-                ax.plot(x, wave, color='white', linewidth=6*low*size_mult + 2, alpha=alpha * 0.4)
-            
             ax.plot(x, wave, color=colors['low'], linewidth=6*low*size_mult, alpha=alpha)
         
         # Onde medie
@@ -326,11 +258,6 @@ class AudioVisualizer:
             y_offset = ylim*0.15 + i * (ylim*0.2)
             wave = y_offset + mid * 0.8 * np.sin(2 * np.pi * (0.8 + i * 0.4) * x/xlim + time_offset)
             alpha = np.clip(0.7 * effects['alpha'], 0.0, 1.0)
-            
-            # Glow effect: draw white underlay
-            if effects['glow']:
-                ax.plot(x, wave, color='white', linewidth=4*mid*size_mult + 1.5, alpha=alpha * 0.4)
-            
             ax.plot(x, wave, color=colors['mid'], linewidth=4*mid*size_mult, alpha=alpha)
         
         # Onde acute - rapide e piccole
@@ -338,73 +265,37 @@ class AudioVisualizer:
             y_offset = ylim*0.1 + i * (ylim*0.18)
             wave = y_offset + high * 0.6 * np.sin(2 * np.pi * (1.5 + i * 0.6) * x/xlim + time_offset)
             alpha = np.clip(0.9 * effects['alpha'], 0.0, 1.0)
-            
-            # Glow effect: draw white underlay
-            if effects['glow']:
-                ax.plot(x, wave, color='white', linewidth=(1.5+high)*size_mult + 1, alpha=alpha * 0.4)
-            
             ax.plot(x, wave, color=colors['high'], linewidth=(1.5+high)*size_mult, alpha=alpha)
     
     def draw_vertical_lines_pattern(self, ax, low, mid, high, colors, effects, time_idx, xlim, ylim):
         """Pattern: Linee verticali dinamiche - SENZA PALLINI"""
         size_mult = effects['size_mult']
         
-        # Draw grid if enabled
-        if effects['grid']:
-            for x in np.arange(0, xlim, 1):
-                ax.axvline(x, color='white', alpha=0.1, linewidth=0.3)
-            for y in np.arange(0, ylim, 1):
-                ax.axhline(y, color='white', alpha=0.1, linewidth=0.3)
-
         # Linee spesse per basse frequenze
         for i in range(int(low * 12)):
-            x_pos = np.random.uniform(0, xlim)
+            x = np.random.uniform(0, xlim)
             height = np.random.uniform(ylim*0.1, ylim*0.8) * low
             y_start = np.random.uniform(0, ylim - height)
             alpha = np.clip(0.7 * effects['alpha'], 0.0, 1.0)
-            
-            # Glow effect: draw white underlay
-            if effects['glow']:
-                ax.plot([x_pos, x_pos], [y_start, y_start + height], 
-                       color='white', 
-                       linewidth=6*low*size_mult + 1.5, 
-                       alpha=alpha * 0.5)
-            
-            ax.plot([x_pos, x_pos], [y_start, y_start + height], 
+            ax.plot([x, x], [y_start, y_start + height], 
                    color=colors['low'], linewidth=6*low*size_mult, alpha=alpha)
         
         # Linee medie per frequenze medie
         for i in range(int(mid * 18)):
-            x_pos = np.random.uniform(0, xlim)
+            x = np.random.uniform(0, xlim)
             height = np.random.uniform(ylim*0.1, ylim*0.6) * mid
             y_start = np.random.uniform(0, ylim - height)
             alpha = np.clip(0.8 * effects['alpha'], 0.0, 1.0)
-            
-            # Glow effect: draw white underlay
-            if effects['glow']:
-                ax.plot([x_pos, x_pos], [y_start, y_start + height], 
-                       color='white', 
-                       linewidth=3*mid*size_mult + 1, 
-                       alpha=alpha * 0.5)
-            
-            ax.plot([x_pos, x_pos], [y_start, y_start + height], 
+            ax.plot([x, x], [y_start, y_start + height], 
                    color=colors['mid'], linewidth=3*mid*size_mult, alpha=alpha)
         
         # Linee sottili per alte frequenze - SENZA SCATTER/PALLINI
         for i in range(int(high * 25)):
-            x_pos = np.random.uniform(0, xlim)
+            x = np.random.uniform(0, xlim)
             height = np.random.uniform(ylim*0.05, ylim*0.4) * high
             y_start = np.random.uniform(0, ylim - height)
             alpha = np.clip(0.9 * effects['alpha'], 0.0, 1.0)
-            
-            # Glow effect: draw white underlay
-            if effects['glow']:
-                ax.plot([x_pos, x_pos], [y_start, y_start + height], 
-                       color='white', 
-                       linewidth=(1+high)*size_mult + 0.8, 
-                       alpha=alpha * 0.5)
-            
-            ax.plot([x_pos, x_pos], [y_start, y_start + height], 
+            ax.plot([x, x], [y_start, y_start + height], 
                    color=colors['high'], linewidth=(1+high)*size_mult, alpha=alpha)
     
     def create_video_no_audio(self, output_path, pattern_type, colors, effects, fps, aspect_ratio="16:9 (Standard)"):
@@ -465,9 +356,7 @@ class AudioVisualizer:
         
         return total_frames
     
-    def create_video_with_audio(self, output_path, pattern_type, colors, effects, fps, 
-                               audio_filename="Unknown Track", video_quality="Media (1280x720)", 
-                               aspect_ratio="16:9 (Standard)", video_title="My Audio Visual"):
+    def create_video_with_audio(self, output_path, pattern_type, colors, effects, fps, audio_filename="Unknown Track", video_quality="Media (1280x720)", aspect_ratio="16:9 (Standard)"):
         """Crea un video completo con audio e genera report finale"""
         # Crea un video temporaneo senza audio
         temp_video_path = output_path.replace('.mp4', '_no_audio.mp4')
@@ -502,9 +391,7 @@ class AudioVisualizer:
             subprocess.run(command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             
             # Genera e mostra il report finale
-            self.show_generation_report(audio_filename, video_title, pattern_type, 
-                                      colors, effects, fps, total_frames, 
-                                      video_quality, aspect_ratio)
+            self.show_generation_report(audio_filename, pattern_type, colors, effects, fps, total_frames, video_quality, aspect_ratio)
             
             return True
             
@@ -518,7 +405,7 @@ class AudioVisualizer:
             if os.path.exists(temp_audio_path):
                 os.remove(temp_audio_path)
     
-    def show_generation_report(self, audio_filename, video_title, pattern_type, colors, effects, fps, total_frames, video_quality, aspect_ratio):
+    def show_generation_report(self, audio_filename, pattern_type, colors, effects, fps, total_frames, video_quality, aspect_ratio):
         """Mostra il report dettagliato della generazione"""
         # Calcola le percentuali dei colori
         low_percent, mid_percent, high_percent = self.get_color_percentages()
@@ -564,7 +451,6 @@ class AudioVisualizer:
         report = f"""
 ## 📊 Audio & Visual Settings Report
 
-**🎬 Video Title:** {video_title}  
 **🎵 Audio Track:** {audio_filename}  
 **⏱️ Duration:** {self.duration:.1f}s  
 **🔊 Sample Rate:** {self.sr:,} Hz  
@@ -632,13 +518,6 @@ def main():
         "Carica file audio",
         type=['wav', 'mp3', 'm4a', 'flac'],
         help="Formati supportati: WAV, MP3, M4A, FLAC"
-    )
-    
-    # Input titolo video
-    video_title = st.sidebar.text_input(
-        "Titolo Video", 
-        "My Audio Visual", 
-        help="Titolo da mostrare nel report"
     )
     
     # Selezione pattern
@@ -780,7 +659,7 @@ def main():
                 # Crea il video con audio
                 success = visualizer.create_video_with_audio(
                     video_path, pattern_type, colors, effects, frame_rate, 
-                    audio_filename, video_quality, aspect_ratio, video_title
+                    audio_filename, video_quality, aspect_ratio
                 )
                 
                 if success:

@@ -136,10 +136,10 @@ class AudioVisualizer:
         else:
             return (16, 9)
     
-    def create_pattern_frame(self, time_idx, pattern_type="waves", colors=None, 
+    def create_pattern_frame(self, time_idx, pattern_type="waves", colors=None, effects=None,
                             aspect_ratio="16:9 (Standard)", title_settings=None, 
                             resolution_px=None, dpi=100):
-        """Crea un frame del pattern basato sulle frequenze - SOLO WAVES"""
+        """Crea un frame del pattern basato sulle frequenze - SOLO WAVES con effetti"""
         low_norm, mid_norm, high_norm = self.get_normalized_bands(time_idx)
         
         # Aggiorna statistiche colori
@@ -149,6 +149,14 @@ class AudioVisualizer:
         if colors is None:
             colors = {
                 'low': '#FF0000', 'mid': '#0000FF', 'high': '#FFFFFF', 'bg': '#000000'
+            }
+        
+        # Effetti default se non specificati
+        if effects is None:
+            effects = {
+                'intensity': 1.0,
+                'speed': 0.1,
+                'randomness': 0.0
             }
         
         # Ottieni impostazioni aspect ratio
@@ -167,11 +175,11 @@ class AudioVisualizer:
         
         # Disegna il pattern wave specifico
         if pattern_type == "waves":
-            self.draw_classic_waves(ax, low_norm, mid_norm, high_norm, colors, time_idx, xlim, ylim)
+            self.draw_classic_waves(ax, low_norm, mid_norm, high_norm, colors, effects, time_idx, xlim, ylim)
         elif pattern_type == "interference":
-            self.draw_interference_waves(ax, low_norm, mid_norm, high_norm, colors, time_idx, xlim, ylim)
+            self.draw_interference_waves(ax, low_norm, mid_norm, high_norm, colors, effects, time_idx, xlim, ylim)
         elif pattern_type == "flowing":
-            self.draw_flowing_waves(ax, low_norm, mid_norm, high_norm, colors, time_idx, xlim, ylim)
+            self.draw_flowing_waves(ax, low_norm, mid_norm, high_norm, colors, effects, time_idx, xlim, ylim)
             
         # Aggiungi titolo se specificato
         if title_settings and title_settings['text']:
@@ -217,120 +225,150 @@ class AudioVisualizer:
             fontweight='bold'
         )
     
-    def draw_classic_waves(self, ax, low, mid, high, colors, time_idx, xlim, ylim):
-        """Pattern ondulatorio classico - originale"""
+    def draw_classic_waves(self, ax, low, mid, high, colors, effects, time_idx, xlim, ylim):
+        """Pattern ondulatorio classico - originale con controlli"""
         x = np.linspace(0, xlim, 500)
         
         # Usa l'indice temporale per sincronizzare le onde con la musica
-        time_offset = time_idx * 0.1
+        time_offset = time_idx * effects.get('speed', 0.1)
+        intensity = effects.get('intensity', 1.0)
+        randomness = effects.get('randomness', 0.0)
         
         # Onde basse - ampie e lente
         for i in range(3):
             y_offset = ylim*0.2 + i * (ylim*0.25)
-            wave = y_offset + low * np.sin(2 * np.pi * (0.3 + i * 0.2) * x/xlim + time_offset)
-            ax.plot(x, wave, color=colors['low'], linewidth=4*low, alpha=0.8)
+            random_offset = np.random.random() * randomness if randomness > 0 else 0
+            wave = y_offset + low * intensity * np.sin(2 * np.pi * (0.3 + i * 0.2) * x/xlim + time_offset + random_offset)
+            ax.plot(x, wave, color=colors['low'], linewidth=4*low*intensity, alpha=0.8)
         
         # Onde medie
         for i in range(4):
             y_offset = ylim*0.15 + i * (ylim*0.2)
-            wave = y_offset + mid * 0.8 * np.sin(2 * np.pi * (0.8 + i * 0.4) * x/xlim + time_offset)
-            ax.plot(x, wave, color=colors['mid'], linewidth=3*mid, alpha=0.7)
+            random_offset = np.random.random() * randomness if randomness > 0 else 0
+            wave = y_offset + mid * intensity * 0.8 * np.sin(2 * np.pi * (0.8 + i * 0.4) * x/xlim + time_offset + random_offset)
+            ax.plot(x, wave, color=colors['mid'], linewidth=3*mid*intensity, alpha=0.7)
         
         # Onde acute - rapide e piccole
         for i in range(5):
             y_offset = ylim*0.1 + i * (ylim*0.18)
-            wave = y_offset + high * 0.6 * np.sin(2 * np.pi * (1.5 + i * 0.6) * x/xlim + time_offset)
-            ax.plot(x, wave, color=colors['high'], linewidth=(1.5+high), alpha=0.9)
+            random_offset = np.random.random() * randomness if randomness > 0 else 0
+            wave = y_offset + high * intensity * 0.6 * np.sin(2 * np.pi * (1.5 + i * 0.6) * x/xlim + time_offset + random_offset)
+            ax.plot(x, wave, color=colors['high'], linewidth=(1.5+high)*intensity, alpha=0.9)
     
-    def draw_interference_waves(self, ax, low, mid, high, colors, time_idx, xlim, ylim):
-        """Pattern di interferenza - onde che si intrecciano (tipo immagine superiore)"""
-        x = np.linspace(0, xlim, 800)
-        time_offset = time_idx * 0.08
-        
-        # Onde che si intersecano - stile interferenza
-        # Onde rosse (basse frequenze) - grandi ampiezze
-        for i in range(4):
-            freq1 = 0.5 + i * 0.3
-            freq2 = 0.7 + i * 0.2
-            y1 = ylim/2 + low * 1.5 * np.sin(2 * np.pi * freq1 * x/xlim + time_offset)
-            y2 = ylim/2 + low * 1.2 * np.sin(2 * np.pi * freq2 * x/xlim - time_offset * 1.5)
-            
-            # Disegna le onde interferenti
-            ax.plot(x, y1, color=colors['low'], linewidth=2 + low*2, alpha=0.6)
-            ax.plot(x, y2, color=colors['low'], linewidth=2 + low*2, alpha=0.4)
-        
-        # Onde blu/turchesi (medie frequenze) - frequenze intermedie
-        for i in range(6):
-            freq1 = 1.0 + i * 0.4
-            freq2 = 1.2 + i * 0.3
-            y1 = ylim/2 + mid * 1.0 * np.sin(2 * np.pi * freq1 * x/xlim + time_offset * 2)
-            y2 = ylim/2 + mid * 0.8 * np.sin(2 * np.pi * freq2 * x/xlim - time_offset)
-            
-            ax.plot(x, y1, color=colors['mid'], linewidth=1.5 + mid*1.5, alpha=0.7)
-            ax.plot(x, y2, color=colors['mid'], linewidth=1.5 + mid*1.5, alpha=0.5)
-        
-        # Onde gialle/bianche (alte frequenze) - frequenze elevate
-        for i in range(8):
-            freq1 = 2.0 + i * 0.6
-            freq2 = 2.3 + i * 0.5
-            y1 = ylim/2 + high * 0.6 * np.sin(2 * np.pi * freq1 * x/xlim + time_offset * 3)
-            y2 = ylim/2 + high * 0.4 * np.sin(2 * np.pi * freq2 * x/xlim - time_offset * 2)
-            
-            ax.plot(x, y1, color=colors['high'], linewidth=1 + high, alpha=0.8)
-            ax.plot(x, y2, color=colors['high'], linewidth=1 + high, alpha=0.6)
-    
-    def draw_flowing_waves(self, ax, low, mid, high, colors, time_idx, xlim, ylim):
-        """Pattern di onde fluide - linee sottili e fluide (tipo immagine inferiore)"""
+    def draw_interference_waves(self, ax, low, mid, high, colors, effects, time_idx, xlim, ylim):
+        """Pattern di interferenza strutturato - onde che si incrociano come nell'immagine"""
         x = np.linspace(0, xlim, 1000)
-        time_offset = time_idx * 0.05
+        time_offset = time_idx * effects.get('speed', 0.1)
+        intensity = effects.get('intensity', 1.0)
+        randomness = effects.get('randomness', 0.0)
         
-        # Onde fluide multiple - stile flusso continuo
-        # Layer di base - onde lente e ampie
-        for i in range(8):
-            phase = i * np.pi / 4
-            freq = 0.3 + i * 0.1
-            amplitude = low * (0.8 + 0.4 * np.sin(time_offset + phase))
+        # Layer 1: Onde ampie (basse frequenze) - rosse/arancioni
+        num_low_waves = int(3 + low * 2)
+        for i in range(num_low_waves):
+            base_freq = 0.4 + i * 0.3
+            random_offset = np.random.random() * randomness if randomness > 0 else 0
             
-            y = ylim/2 + amplitude * np.sin(2 * np.pi * freq * x/xlim + time_offset + phase)
+            # Onda principale
+            y1 = ylim/2 + low * intensity * 2.0 * np.sin(2 * np.pi * base_freq * x/xlim + time_offset + random_offset)
+            # Onda interferente con fase diversa
+            y2 = ylim/2 + low * intensity * 1.5 * np.sin(2 * np.pi * (base_freq * 1.3) * x/xlim - time_offset * 0.7 + random_offset)
             
-            # Colore sfumato dal rosso al bianco
-            alpha_val = 0.3 + 0.4 * (i / 8)
-            color_intensity = i / 8
-            color = (1.0, color_intensity * 0.5, color_intensity * 0.5)  # Da rosso a rosa-bianco
-            
-            ax.plot(x, y, color=color, linewidth=0.8 + low*0.5, alpha=alpha_val)
+            ax.plot(x, y1, color=colors['low'], linewidth=3 + low*2*intensity, alpha=0.7)
+            ax.plot(x, y2, color=colors['low'], linewidth=2.5 + low*1.5*intensity, alpha=0.5)
         
-        # Layer intermedio - onde medie
-        for i in range(12):
-            phase = i * np.pi / 6
-            freq = 0.6 + i * 0.15
-            amplitude = mid * (0.6 + 0.3 * np.sin(time_offset * 1.5 + phase))
+        # Layer 2: Onde medie (frequenze medie) - blu/turchesi
+        num_mid_waves = int(4 + mid * 3)
+        for i in range(num_mid_waves):
+            base_freq = 1.0 + i * 0.4
+            random_offset = np.random.random() * randomness if randomness > 0 else 0
             
-            y = ylim/2 + amplitude * np.sin(2 * np.pi * freq * x/xlim + time_offset * 1.5 + phase)
+            # Pattern di interferenza più complesso
+            y1 = ylim/2 + mid * intensity * 1.2 * np.sin(2 * np.pi * base_freq * x/xlim + time_offset * 1.5 + random_offset)
+            y2 = ylim/2 + mid * intensity * 0.8 * np.sin(2 * np.pi * (base_freq * 1.6) * x/xlim - time_offset + random_offset)
+            y3 = ylim/2 + mid * intensity * 0.6 * np.sin(2 * np.pi * (base_freq * 0.7) * x/xlim + time_offset * 2 + random_offset)
             
-            # Gradiente dal blu al ciano
-            alpha_val = 0.2 + 0.3 * (i / 12)
-            color_intensity = i / 12
-            color = (color_intensity * 0.3, 0.5 + color_intensity * 0.5, 1.0)  # Da blu a ciano
-            
-            ax.plot(x, y, color=color, linewidth=0.6 + mid*0.4, alpha=alpha_val)
+            ax.plot(x, y1, color=colors['mid'], linewidth=2 + mid*1.5*intensity, alpha=0.8)
+            ax.plot(x, y2, color=colors['mid'], linewidth=1.5 + mid*intensity, alpha=0.6)
+            ax.plot(x, y3, color=colors['mid'], linewidth=1 + mid*0.8*intensity, alpha=0.4)
         
-        # Layer superiore - onde rapide e sottili
-        for i in range(15):
-            phase = i * np.pi / 8
-            freq = 1.2 + i * 0.2
-            amplitude = high * (0.4 + 0.2 * np.sin(time_offset * 2.5 + phase))
+        # Layer 3: Onde acute (alte frequenze) - gialle/bianche
+        num_high_waves = int(6 + high * 4)
+        for i in range(num_high_waves):
+            base_freq = 2.0 + i * 0.5
+            random_offset = np.random.random() * randomness if randomness > 0 else 0
             
-            y = ylim/2 + amplitude * np.sin(2 * np.pi * freq * x/xlim + time_offset * 2.5 + phase)
+            # Onde rapide e sottili che si intersecano
+            y1 = ylim/2 + high * intensity * 0.8 * np.sin(2 * np.pi * base_freq * x/xlim + time_offset * 3 + random_offset)
+            y2 = ylim/2 + high * intensity * 0.6 * np.sin(2 * np.pi * (base_freq * 1.2) * x/xlim - time_offset * 2.5 + random_offset)
+            y3 = ylim/2 + high * intensity * 0.4 * np.sin(2 * np.pi * (base_freq * 0.8) * x/xlim + time_offset * 4 + random_offset)
             
-            # Gradiente verso il bianco/giallo
-            alpha_val = 0.4 + 0.5 * (i / 15)
-            color_intensity = 0.7 + 0.3 * (i / 15)
-            color = (color_intensity, color_intensity, color_intensity)  # Verso il bianco
-            
-            ax.plot(x, y, color=color, linewidth=0.4 + high*0.3, alpha=alpha_val)
+            ax.plot(x, y1, color=colors['high'], linewidth=1 + high*intensity, alpha=0.9)
+            ax.plot(x, y2, color=colors['high'], linewidth=0.8 + high*0.8*intensity, alpha=0.7)
+            ax.plot(x, y3, color=colors['high'], linewidth=0.6 + high*0.6*intensity, alpha=0.5)
     
-    def create_video_no_audio(self, output_path, pattern_type, colors, fps, 
+    def draw_flowing_waves(self, ax, low, mid, high, colors, effects, time_idx, xlim, ylim):
+        """Pattern completamente nuovo: Onde Stratificate Orizzontali come nell'immagine"""
+        x = np.linspace(0, xlim, 1200)
+        time_offset = time_idx * effects.get('speed', 0.1)
+        intensity = effects.get('intensity', 1.0)
+        randomness = effects.get('randomness', 0.0)
+        
+        # Dividi lo schermo in fasce orizzontali
+        num_layers = 12
+        layer_height = ylim / num_layers
+        
+        # Layer inferiori: Onde basse (rosse/arancioni) - lente e ampie
+        for layer in range(4):  # Prime 4 fasce dal basso
+            y_base = layer * layer_height + layer_height/2
+            
+            # Multipli onde per layer con frequenze diverse
+            for wave_idx in range(3):
+                freq = 0.3 + layer * 0.1 + wave_idx * 0.2
+                amplitude = low * intensity * (0.4 + 0.3 * (layer/4))
+                random_offset = np.random.random() * randomness if randomness > 0 else 0
+                
+                # Onda principale stratificata
+                wave_y = y_base + amplitude * np.sin(2 * np.pi * freq * x/xlim + time_offset + random_offset)
+                
+                # Alpha e spessore basati sul layer
+                alpha_val = 0.4 + 0.4 * (layer/4)
+                line_width = 2 + low * intensity * (1 + layer/4)
+                
+                ax.plot(x, wave_y, color=colors['low'], linewidth=line_width, alpha=alpha_val)
+        
+        # Layer centrali: Onde medie (blu/turchesi) - frequenza intermedia
+        for layer in range(4, 8):  # Fasce centrali
+            y_base = layer * layer_height + layer_height/2
+            
+            for wave_idx in range(4):  # Più onde per layer
+                freq = 0.8 + (layer-4) * 0.2 + wave_idx * 0.3
+                amplitude = mid * intensity * (0.3 + 0.2 * ((layer-4)/4))
+                random_offset = np.random.random() * randomness if randomness > 0 else 0
+                
+                wave_y = y_base + amplitude * np.sin(2 * np.pi * freq * x/xlim + time_offset * 1.5 + random_offset)
+                
+                alpha_val = 0.5 + 0.3 * ((layer-4)/4)
+                line_width = 1.5 + mid * intensity * (0.8 + (layer-4)/4)
+                
+                ax.plot(x, wave_y, color=colors['mid'], linewidth=line_width, alpha=alpha_val)
+        
+        # Layer superiori: Onde acute (bianche/gialle) - rapide e sottili
+        for layer in range(8, 12):  # Fasce superiori
+            y_base = layer * layer_height + layer_height/2
+            
+            for wave_idx in range(5):  # Molte onde sottili
+                freq = 1.5 + (layer-8) * 0.3 + wave_idx * 0.4
+                amplitude = high * intensity * (0.2 + 0.15 * ((layer-8)/4))
+                random_offset = np.random.random() * randomness if randomness > 0 else 0
+                
+                wave_y = y_base + amplitude * np.sin(2 * np.pi * freq * x/xlim + time_offset * 2.5 + random_offset)
+                
+                alpha_val = 0.6 + 0.4 * ((layer-8)/4)
+                line_width = 0.8 + high * intensity * (0.6 + (layer-8)/4)
+                
+                ax.plot(x, wave_y, color=colors['high'], linewidth=line_width, alpha=alpha_val)
+    
+    def create_video_no_audio(self, output_path, pattern_type, colors, effects, fps, 
                              aspect_ratio="16:9 (Standard)", video_quality="Media (1280x720)", 
                              title_settings=None):
         """Crea un video senza audio"""
@@ -367,8 +405,9 @@ class AudioVisualizer:
             
             # Crea frame con la risoluzione corretta
             fig = self.create_pattern_frame(
-                time_idx, pattern_type, colors, aspect_ratio, 
+                time_idx, pattern_type, colors, effects, aspect_ratio, 
                 title_settings, resolution_px=resolution_px, dpi=100
+            )resolution_px, dpi=100
             )
             
             # Salva il frame come immagine
@@ -396,14 +435,14 @@ class AudioVisualizer:
         
         return total_frames, resolution_px
     
-    def create_video_with_audio(self, output_path, pattern_type, colors, fps, 
+    def create_video_with_audio(self, output_path, pattern_type, colors, effects, fps, 
                                audio_filename="Unknown Track", video_quality="Media (1280x720)", 
                                aspect_ratio="16:9 (Standard)", video_title="My Audio Visual", title_settings=None):
         """Crea un video completo con audio e genera report finale"""
         # Crea un video temporaneo senza audio
         temp_video_path = output_path.replace('.mp4', '_no_audio.mp4')
         total_frames, resolution_px = self.create_video_no_audio(
-            temp_video_path, pattern_type, colors, fps, 
+            temp_video_path, pattern_type, colors, effects, fps, 
             aspect_ratio, video_quality, title_settings
         )
         
@@ -437,7 +476,7 @@ class AudioVisualizer:
             
             # Genera e mostra il report finale
             self.show_generation_report(audio_filename, video_title, pattern_type, 
-                                      colors, fps, total_frames, 
+                                      colors, effects, fps, total_frames, 
                                       video_quality, aspect_ratio, title_settings,
                                       resolution_px)
             
@@ -453,7 +492,7 @@ class AudioVisualizer:
             if os.path.exists(temp_audio_path):
                 os.remove(temp_audio_path)
     
-    def show_generation_report(self, audio_filename, video_title, pattern_type, colors, fps, total_frames, video_quality, aspect_ratio, title_settings, resolution_px):
+    def show_generation_report(self, audio_filename, video_title, pattern_type, colors, effects, fps, total_frames, video_quality, aspect_ratio, title_settings, resolution_px):
         """Mostra il report dettagliato della generazione"""
         # Calcola le percentuali dei colori
         low_percent, mid_percent, high_percent = self.get_color_percentages()
@@ -464,9 +503,18 @@ class AudioVisualizer:
         # Mappa nomi pattern
         pattern_names = {
             "waves": "Onde Classiche",
-            "interference": "Onde Interferenza", 
-            "flowing": "Onde Fluide"
+            "interference": "Onde Interferenza Strutturate", 
+            "flowing": "Onde Stratificate Orizzontali"
         }
+        
+        # Determina intensità basata sui moltiplicatori
+        intensity_level = effects.get('intensity', 1.0)
+        if intensity_level < 0.8:
+            intensity_desc = "Bassa"
+        elif intensity_level > 1.5:
+            intensity_desc = "Alta"
+        else:
+            intensity_desc = "Media"
         
         # Prepara info titolo
         title_info = "❌ Disabilitato"
@@ -476,7 +524,7 @@ class AudioVisualizer:
         
         # Crea il report
         report = f"""
-## 📊 Audio Visual Report - WAVES ONLY
+## 📊 Audio Visual Report - WAVES EDITION
 
 **🎬 Video Title:** {video_title}  
 **🎵 Audio Track:** {audio_filename}  
@@ -492,6 +540,9 @@ class AudioVisualizer:
 
 ### ⚙️ Wave Configuration:
 - **🌊 Wave Style:** {pattern_names.get(pattern_type, pattern_type.title())}
+- **💪 Intensità:** {intensity_desc} ({intensity_level}x)
+- **⚡ Velocità:** {effects.get('speed', 0.1)}x
+- **🎲 Casualità:** {effects.get('randomness', 0.0)*100:.0f}%
 - **📐 Format:** {aspect_ratio.split(' ')[0]} | **🎬 FPS:** {fps}
 - **📝 Title:** {title_info}
 - **🖼️ Total Frames:** ~{total_frames:,}
@@ -513,6 +564,7 @@ class AudioVisualizer:
         🔴 Basse: {low_percent:.1f}% | 🔵 Medie: {mid_percent:.1f}% | ⚪ Acute: {high_percent:.1f}%
         
         **Dettagli:** {total_frames:,} frames • {fps} FPS • {self.duration:.1f}s • Wave: {pattern_names.get(pattern_type, pattern_type)} • {final_resolution}
+        **Effetti:** Intensità {intensity_desc} • Velocità {effects.get('speed', 0.1)}x • Casualità {effects.get('randomness', 0.0)*100:.0f}%
         """)
 
 # Configurazione pagina
@@ -587,9 +639,46 @@ def main():
             ["Sopra", "Sotto"],
             index=0
         )
+    # Controlli effetti generali
+    st.sidebar.subheader("⚙️ Controlli Generali")
+    
+    # Intensità
+    intensity_multiplier = st.sidebar.slider("Intensità", 0.5, 3.0, 1.0, 0.1, 
+                                            help="Controlla l'intensità generale degli effetti")
+    
+    # Velocità
+    speed_multiplier = st.sidebar.slider("Velocità", 0.1, 2.0, 0.1, 0.05,
+                                       help="Controlla la velocità di movimento delle onde")
+    
+    # Randomness
+    randomness_factor = st.sidebar.slider("Casualità", 0.0, 1.0, 0.0, 0.05,
+                                        help="Aggiunge variazione casuale alle onde")
+    
     else:
         title_h_position = "Centro"
         title_v_position = "Sopra"
+    
+    # Controlli effetti generali
+    st.sidebar.subheader("⚙️ Controlli Generali")
+    
+    # Intensità
+    intensity_multiplier = st.sidebar.slider("Intensità", 0.5, 3.0, 1.0, 0.1, 
+                                            help="Controlla l'intensità generale degli effetti")
+    
+    # Velocità
+    speed_multiplier = st.sidebar.slider("Velocità", 0.1, 2.0, 0.1, 0.05,
+                                       help="Controlla la velocità di movimento delle onde")
+    
+    # Randomness
+    randomness_factor = st.sidebar.slider("Casualità", 0.0, 1.0, 0.0, 0.05,
+                                        help="Aggiunge variazione casuale alle onde")
+    
+    # Preparazione effetti
+    effects = {
+        'intensity': intensity_multiplier,
+        'speed': speed_multiplier,
+        'randomness': randomness_factor
+    }
     
     # FPS per la visualizzazione
     frame_rate = st.sidebar.selectbox("FPS", [10, 15, 20, 30], index=2)
@@ -668,7 +757,7 @@ def main():
                 time_idx = np.argmin(np.abs(visualizer.times - current_time))
                 
                 # Crea frame
-                fig = visualizer.create_pattern_frame(time_idx, pattern_type, colors, aspect_ratio, title_settings)
+                fig = visualizer.create_pattern_frame(time_idx, pattern_type, colors, effects, aspect_ratio, title_settings)
                 
                 # Mostra frame
                 placeholder.pyplot(fig, clear_figure=True)
@@ -696,7 +785,7 @@ def main():
                 
                 # Crea il video con audio
                 success = visualizer.create_video_with_audio(
-                    video_path, pattern_type, colors, frame_rate, 
+                    video_path, pattern_type, colors, effects, frame_rate, 
                     audio_filename, video_quality, aspect_ratio, video_title, title_settings
                 )
                 
@@ -710,8 +799,8 @@ def main():
                     
                     pattern_names = {
                         "waves": "classic_waves",
-                        "interference": "interference_waves", 
-                        "flowing": "flowing_waves"
+                        "interference": "interference_structured", 
+                        "flowing": "stratified_horizontal"
                     }
                     
                     st.download_button(
@@ -742,11 +831,11 @@ def main():
         ### 🌊 **Onde Classiche**
         Pattern tradizionale con onde sinusoidali pulite, perfette per visualizzazioni eleganti e rilassanti.
         
-        ### 🔄 **Onde Interferenza** 
-        Onde che si intrecciano e interferiscono tra loro, creando pattern complessi ispirati all'immagine superiore che hai fornito. Ideale per musica elettronica e dinamica.
+        ### 🔄 **Onde Interferenza Strutturate** 
+        Onde che si intrecciano in modo più ordinato e strutturato, con layer multipli che creano pattern complessi di interferenza. Perfetto per musica elettronica e dinamica.
         
-        ### 💫 **Onde Fluide**
-        Flusso continuo di onde sottili e fluide che si sovrappongono, ispirato all'immagine inferiore. Perfetto per ambient e musica rilassante.
+        ### 💫 **Onde Stratificate Orizzontali**
+        Nuovo pattern con onde organizzate in fasce orizzontali, dove ogni banda di frequenza occupa una zona specifica dello schermo. Crea un effetto a strati molto distintivo.
         
         **🎨 Caratteristiche:**
         - **Nessun effetto extra** - solo onde pure

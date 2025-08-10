@@ -433,11 +433,12 @@ def main():
         ax2.set_title('⬛ Onde Quadre', color='white', fontsize=14, pad=20)
         ax2.axis('off')
         
-        # Demo onde a dente di sega
+        # Demo onde a dente di sega (CORRETTA)
         ax3.set_facecolor('black')
         for i in range(3):
             freq = 0.6 + i * 0.3
             t = 2 * np.pi * freq * x/16
+            # Funzione corretta per onda a dente di sega
             y = 2 + 0.8 * (2 * (t/(2*np.pi) - np.floor(t/(2*np.pi) + 0.5))
             ax3.plot(x, y, color=['#FF0000', '#0000FF', '#FFFFFF'][i], linewidth=3, alpha=0.8)
         ax3.set_xlim(0, 16)

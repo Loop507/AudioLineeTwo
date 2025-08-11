@@ -180,6 +180,13 @@ class AudioVisualizer:
             self.draw_interference_waves(ax, low_norm, mid_norm, high_norm, colors, effects, time_idx, xlim, ylim)
         elif pattern_type == "flowing":
             self.draw_flowing_waves(ax, low_norm, mid_norm, high_norm, colors, effects, time_idx, xlim, ylim)
+        elif pattern_type == "am":
+            self.draw_am_waves(ax, low_norm, mid_norm, high_norm, colors, effects, time_idx, xlim, ylim)
+        elif pattern_type == "fm":
+            self.draw_fm_waves(ax, low_norm, mid_norm, high_norm, colors, effects, time_idx, xlim, ylim)
+        elif pattern_type == "reflected":
+            self.draw_reflected_waves(ax, low_norm, mid_norm, high_norm, colors, effects, time_idx, xlim, ylim)
+            self.draw_flowing_waves(ax, low_norm, mid_norm, high_norm, colors, effects, time_idx, xlim, ylim)
             
         # Aggiungi titolo se specificato
         if title_settings and title_settings['text']:
@@ -368,6 +375,67 @@ class AudioVisualizer:
                 
                 ax.plot(x, wave_y, color=colors['high'], linewidth=line_width, alpha=alpha_val)
     
+
+    def draw_am_waves(self, ax, low, mid, high, colors, effects, time_idx, xlim, ylim):
+        """Onde sinusoidali con modulazione di ampiezza (AM) per le 3 bande"""
+        x = np.linspace(0, xlim, 800)
+        time_offset = time_idx * effects.get('speed', 0.1)
+        intensity = effects.get('intensity', 1.0)
+        
+        # Low freq - modulazione lenta e ampia
+        am_low = (1 + 0.5 * np.sin(2 * np.pi * 0.2 * x/xlim + time_offset)) 
+        y_low = ylim*0.3 + low * intensity * am_low * np.sin(2 * np.pi * 0.4 * x/xlim + time_offset)
+        ax.plot(x, y_low, color=colors['low'], linewidth=3*low*intensity, alpha=0.8)
+
+        # Mid freq - modulazione media
+        am_mid = (1 + 0.4 * np.sin(2 * np.pi * 0.4 * x/xlim + time_offset*1.2))
+        y_mid = ylim*0.5 + mid * intensity * am_mid * np.sin(2 * np.pi * 0.8 * x/xlim + time_offset*1.5)
+        ax.plot(x, y_mid, color=colors['mid'], linewidth=2.5*mid*intensity, alpha=0.7)
+
+        # High freq - modulazione veloce
+        am_high = (1 + 0.3 * np.sin(2 * np.pi * 0.8 * x/xlim + time_offset*2))
+        y_high = ylim*0.7 + high * intensity * am_high * np.sin(2 * np.pi * 1.6 * x/xlim + time_offset*2.2)
+        ax.plot(x, y_high, color=colors['high'], linewidth=2*high*intensity, alpha=0.9)
+
+    def draw_fm_waves(self, ax, low, mid, high, colors, effects, time_idx, xlim, ylim):
+        """Onde sinusoidali con modulazione di frequenza (FM) per le 3 bande"""
+        x = np.linspace(0, xlim, 800)
+        time_offset = time_idx * effects.get('speed', 0.1)
+        intensity = effects.get('intensity', 1.0)
+        
+        # Low freq - FM lenta
+        freq_low = 0.4 + 0.1 * np.sin(2 * np.pi * 0.2 * x/xlim + time_offset)
+        y_low = ylim*0.3 + low * intensity * np.sin(2 * np.pi * freq_low * x/xlim + time_offset)
+        ax.plot(x, y_low, color=colors['low'], linewidth=3*low*intensity, alpha=0.8)
+
+        # Mid freq - FM media
+        freq_mid = 0.8 + 0.15 * np.sin(2 * np.pi * 0.3 * x/xlim + time_offset*1.3)
+        y_mid = ylim*0.5 + mid * intensity * np.sin(2 * np.pi * freq_mid * x/xlim + time_offset*1.4)
+        ax.plot(x, y_mid, color=colors['mid'], linewidth=2.5*mid*intensity, alpha=0.7)
+
+        # High freq - FM veloce
+        freq_high = 1.6 + 0.2 * np.sin(2 * np.pi * 0.5 * x/xlim + time_offset*1.8)
+        y_high = ylim*0.7 + high * intensity * np.sin(2 * np.pi * freq_high * x/xlim + time_offset*1.9)
+        ax.plot(x, y_high, color=colors['high'], linewidth=2*high*intensity, alpha=0.9)
+
+    def draw_reflected_waves(self, ax, low, mid, high, colors, effects, time_idx, xlim, ylim):
+        """Onde sinusoidali riflesse simmetricamente per le 3 bande"""
+        x = np.linspace(0, xlim, 800)
+        time_offset = time_idx * effects.get('speed', 0.1)
+        intensity = effects.get('intensity', 1.0)
+        
+        # Funzione helper per specchiare onde
+        def draw_reflected(y_base, amplitude, freq, color, width, alpha):
+            y = amplitude * np.sin(2 * np.pi * freq * x/xlim + time_offset)
+            ax.plot(x, y_base + y, color=color, linewidth=width, alpha=alpha)
+            ax.plot(x, y_base - y, color=color, linewidth=width, alpha=alpha)
+        
+        # Low
+        draw_reflected(ylim*0.3, low * intensity, 0.4, colors['low'], 3*low*intensity, 0.8)
+        # Mid
+        draw_reflected(ylim*0.5, mid * intensity, 0.8, colors['mid'], 2.5*mid*intensity, 0.7)
+        # High
+        draw_reflected(ylim*0.7, high * intensity, 1.6, colors['high'], 2*high*intensity, 0.9)
     def create_video_no_audio(self, output_path, pattern_type, colors, effects, fps, 
                              aspect_ratio="16:9 (Standard)", video_quality="Media (1280x720)", 
                              title_settings=None):
@@ -598,10 +666,13 @@ def main():
     # Selezione pattern WAVE
     pattern_type = st.sidebar.selectbox(
         "Tipo di Onda",
-        ["waves", "interference", "flowing"],
+        ["waves", "interference", "flowing", "am", "fm", "reflected"],
         help="Scegli il tipo di visualizzazione wave",
         format_func=lambda x: {
             "waves": "🌊 Onde Classiche",
+            "am": "📡 Onde AM (Ampiezza Modulata)",
+            "fm": "🎛️ Onde FM (Frequenza Modulata)",
+            "reflected": "🪞 Onde Riflesse",
             "interference": "🔄 Onde Interferenza", 
             "flowing": "💫 Onde Fluide"
         }[x]

@@ -186,7 +186,12 @@ class AudioVisualizer:
             self.draw_fm_waves(ax, low_norm, mid_norm, high_norm, colors, effects, time_idx, xlim, ylim)
         elif pattern_type == "reflected":
             self.draw_reflected_waves(ax, low_norm, mid_norm, high_norm, colors, effects, time_idx, xlim, ylim)
-            self.draw_flowing_waves(ax, low_norm, mid_norm, high_norm, colors, effects, time_idx, xlim, ylim)
+        elif pattern_type == "varied_amplitude":
+            self.draw_varied_amplitude_waves(ax, low_norm, mid_norm, high_norm, colors, effects, time_idx, xlim, ylim)
+        elif pattern_type == "varied_shape":
+            self.draw_varied_shape_waves(ax, low_norm, mid_norm, high_norm, colors, effects, time_idx, xlim, ylim)
+        elif pattern_type == "varied_motion":
+            self.draw_varied_motion_waves(ax, low_norm, mid_norm, high_norm, colors, effects, time_idx, xlim, ylim)
             
         # Aggiungi titolo se specificato
         if title_settings and title_settings['text']:
@@ -436,6 +441,68 @@ class AudioVisualizer:
         draw_reflected(ylim*0.5, mid * intensity, 0.8, colors['mid'], 2.5*mid*intensity, 0.7)
         # High
         draw_reflected(ylim*0.7, high * intensity, 1.6, colors['high'], 2*high*intensity, 0.9)
+    
+    # NUOVI EFFETTI AGGIUNTI
+    def draw_varied_amplitude_waves(self, ax, low, mid, high, colors, effects, time_idx, xlim, ylim):
+        """Onde con ampiezza modulata diversamente per ogni banda"""
+        x = np.linspace(0, xlim, 800)
+        time_offset = time_idx * effects.get('speed', 0.1)
+        intensity = effects.get('intensity', 1.0)
+        
+        # Low: pulsazione esponenziale
+        amp_low = low * intensity * (0.5 + 0.5 * np.exp(np.sin(0.5 * x/xlim + time_offset)))
+        y_low = ylim*0.3 + amp_low * np.sin(2 * np.pi * 0.4 * x/xlim + time_offset)
+        ax.plot(x, y_low, color=colors['low'], linewidth=3, alpha=0.8)
+
+        # Mid: ampiezza a gradini
+        steps = np.floor(5 * x/xlim) / 5  # 5 gradini
+        amp_mid = mid * intensity * (0.4 + 0.6 * steps)
+        y_mid = ylim*0.5 + amp_mid * np.sin(2 * np.pi * 0.8 * x/xlim + time_offset*1.5)
+        ax.plot(x, y_mid, color=colors['mid'], linewidth=2.5, alpha=0.7)
+
+        # High: modulazione lenta
+        amp_high = high * intensity * (0.6 + 0.4 * np.sin(0.2 * x/xlim + time_offset*0.5))
+        y_high = ylim*0.7 + amp_high * np.sin(2 * np.pi * 1.6 * x/xlim + time_offset*2)
+        ax.plot(x, y_high, color=colors['high'], linewidth=2, alpha=0.9)
+
+    def draw_varied_shape_waves(self, ax, low, mid, high, colors, effects, time_idx, xlim, ylim):
+        """Onde con forme diverse per ogni banda"""
+        x = np.linspace(0, xlim, 800)
+        time_offset = time_idx * effects.get('speed', 0.1)
+        intensity = effects.get('intensity', 1.0)
+        
+        # Low: sinusoide classica
+        y_low = ylim*0.3 + low * intensity * np.sin(2 * np.pi * 0.4 * x/xlim + time_offset)
+        ax.plot(x, y_low, color=colors['low'], linewidth=3, alpha=0.8)
+
+        # Mid: sinusoide + armonica (più appuntita)
+        theta = 2 * np.pi * 0.8 * x/xlim + time_offset*1.5
+        y_mid = ylim*0.5 + mid * intensity * (np.sin(theta) + 0.3 * np.sin(2*theta))
+        ax.plot(x, y_mid, color=colors['mid'], linewidth=2.5, alpha=0.7)
+
+        # High: doppio seno (effetto schiacciato)
+        y_high = ylim*0.7 + high * intensity * np.sin(np.sin(2 * np.pi * 1.6 * x/xlim + time_offset*2))
+        ax.plot(x, y_high, color=colors['high'], linewidth=2, alpha=0.9)
+
+    def draw_varied_motion_waves(self, ax, low, mid, high, colors, effects, time_idx, xlim, ylim):
+        """Onde con movimenti diversi per ogni banda"""
+        x = np.linspace(0, xlim, 800)
+        time_offset = time_idx * effects.get('speed', 0.1)
+        intensity = effects.get('intensity', 1.0)
+        
+        # Low: movimento orizzontale standard
+        y_low = ylim*0.3 + low * intensity * np.sin(2 * np.pi * 0.4 * x/xlim + time_offset)
+        ax.plot(x, y_low, color=colors['low'], linewidth=3, alpha=0.8)
+
+        # Mid: movimento diagonale (x e y combinati)
+        y_mid = ylim*0.5 + mid * intensity * np.sin(2 * np.pi * 0.8 * (0.7*x/xlim + 0.3*y_low/ylim) + time_offset*1.5)
+        ax.plot(x, y_mid, color=colors['mid'], linewidth=2.5, alpha=0.7)
+
+        # High: movimento a zig-zag (inversione di fase)
+        phase_mod = np.sign(np.sin(0.5 * time_offset))  # inverte la fase periodicamente
+        y_high = ylim*0.7 + high * intensity * np.sin(2 * np.pi * 1.6 * x/xlim + phase_mod * time_offset*2)
+        ax.plot(x, y_high, color=colors['high'], linewidth=2, alpha=0.9)
+    
     def create_video_no_audio(self, output_path, pattern_type, colors, effects, fps, 
                              aspect_ratio="16:9 (Standard)", video_quality="Media (1280x720)", 
                              title_settings=None):
@@ -571,7 +638,13 @@ class AudioVisualizer:
         pattern_names = {
             "waves": "Onde Classiche",
             "interference": "Onde Interferenza Strutturate", 
-            "flowing": "Onde Stratificate Orizzontali"
+            "flowing": "Onde Stratificate Orizzontali",
+            "am": "Onde AM",
+            "fm": "Onde FM",
+            "reflected": "Onde Riflesse",
+            "varied_amplitude": "Onde Ampiezza Variabile",
+            "varied_shape": "Onde Forma Variabile",
+            "varied_motion": "Onde Movimento Variabile"
         }
         
         # Determina intensità basata sui moltiplicatori
@@ -666,7 +739,8 @@ def main():
     # Selezione pattern WAVE
     pattern_type = st.sidebar.selectbox(
         "Tipo di Onda",
-        ["waves", "interference", "flowing", "am", "fm", "reflected"],
+        ["waves", "interference", "flowing", "am", "fm", "reflected", 
+         "varied_amplitude", "varied_shape", "varied_motion"],
         help="Scegli il tipo di visualizzazione wave",
         format_func=lambda x: {
             "waves": "🌊 Onde Classiche",
@@ -674,7 +748,10 @@ def main():
             "fm": "🎛️ Onde FM (Frequenza Modulata)",
             "reflected": "🪞 Onde Riflesse",
             "interference": "🔄 Onde Interferenza", 
-            "flowing": "💫 Onde Fluide"
+            "flowing": "💫 Onde Fluide",
+            "varied_amplitude": "📈 Onde Ampiezza Variabile",
+            "varied_shape": "🔷 Onde Forma Variabile",
+            "varied_motion": "↕️ Onde Movimento Variabile"
         }[x]
     )
     
@@ -786,7 +863,10 @@ def main():
             pattern_names = {
                 "waves": "Onde Classiche",
                 "interference": "Onde Interferenza", 
-                "flowing": "Onde Fluide"
+                "flowing": "Onde Fluide",
+                "varied_amplitude": "Onde Ampiezza Variabile",
+                "varied_shape": "Onde Forma Variabile",
+                "varied_motion": "Onde Movimento Variabile"
             }
             st.write(f"Wave: **{pattern_names.get(pattern_type, pattern_type)}**")
             
@@ -855,7 +935,10 @@ def main():
                     pattern_names = {
                         "waves": "classic_waves",
                         "interference": "interference_structured", 
-                        "flowing": "stratified_horizontal"
+                        "flowing": "stratified_horizontal",
+                        "varied_amplitude": "varied_amplitude",
+                        "varied_shape": "varied_shape",
+                        "varied_motion": "varied_motion"
                     }
                     
                     st.download_button(
@@ -892,10 +975,17 @@ def main():
         ### 💫 **Onde Stratificate Orizzontali**
         Nuovo pattern con onde organizzate in fasce orizzontali, dove ogni banda di frequenza occupa una zona specifica dello schermo. Crea un effetto a strati molto distintivo.
         
+        ### 📈 **Onde Ampiezza Variabile**
+        Ogni banda ha una modulazione di ampiezza diversa: pulsazione esponenziale per le basse, gradini discreti per le medie, modulazione lenta per le alte.
+        
+        ### 🔷 **Onde Forma Variabile**
+        Forme d'onda diverse per ogni banda: sinusoidi classiche per le basse, onde appuntite per le medie, e onde schiacciate per le alte.
+        
+        ### ↕️ **Onde Movimento Variabile**
+        Movimenti distinti per ogni banda: orizzontale per le basse, diagonale per le medie, e zig-zag per le alte.
+        
         **🎨 Caratteristiche:**
-        - **Nessun effetto extra** - solo onde pure
-        - **Nessuna griglia** - focus totale sulle wave
-        - **3 stili wave unici** basati sulla tua immagine
+        - **9 stili wave unici** basati sulla tua immagine
         - **Colori personalizzabili** per ogni banda di frequenza
         - **Report dettagliato** con distribuzione colori
         - **Aspect ratio multipli:** 16:9, 1:1, 9:16
@@ -903,7 +993,7 @@ def main():
         
         **Come usare:**
         1. Carica un file audio dalla sidebar
-        2. Scegli il tipo di wave (Classiche/Interferenza/Fluide)
+        2. Scegli il tipo di wave tra le 9 opzioni
         3. Personalizza i colori per ogni banda di frequenza
         4. Configura titolo (opzionale) e qualità video
         5. Avvia la preview o crea direttamente il video!

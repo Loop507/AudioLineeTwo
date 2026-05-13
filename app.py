@@ -503,6 +503,131 @@ class AudioVisualizer:
         y_high = ylim*0.7 + high * intensity * np.sin(2 * np.pi * 1.6 * x/xlim + phase_mod * time_offset*2)
         ax.plot(x, y_high, color=colors['high'], linewidth=2, alpha=0.9)
     
+    def generate_preview_frames(self, pattern_type, colors, effects, num_frames=12):
+        """Genera una griglia di frame preview a bassa risoluzione (no time.sleep)"""
+        preview_times = np.linspace(0, len(self.times) - 1, num_frames, dtype=int)
+        frames = []
+        for t_idx in preview_times:
+            fig = self.create_pattern_frame(
+                int(t_idx), pattern_type, colors, effects,
+                aspect_ratio="16:9 (Standard)",
+                title_settings=None,
+                resolution_px=(320, 180),
+                dpi=72
+            )
+            buf = io.BytesIO()
+            fig.savefig(buf, format='png', bbox_inches='tight', pad_inches=0)
+            plt.close(fig)
+            buf.seek(0)
+            frames.append(buf.read())
+        return frames
+
+    def generate_social_report(self, audio_filename, video_title, pattern_type, colors, effects,
+                                fps, total_frames, video_quality, aspect_ratio,
+                                low_percent, mid_percent, high_percent):
+        """Genera testo stilizzato per social/YouTube da scaricare"""
+        pattern_labels = {
+            "waves": "Classic Waves",
+            "interference": "Structured Interference Waves",
+            "flowing": "Horizontal Layered Waves",
+            "am": "AM Modulated Waves",
+            "fm": "FM Modulated Waves",
+            "reflected": "Reflected Waves",
+            "varied_amplitude": "Variable Amplitude Waves",
+            "varied_shape": "Variable Shape Waves",
+            "varied_motion": "Variable Motion Waves"
+        }
+        pattern_label = pattern_labels.get(pattern_type, pattern_type.title())
+
+        # Determina dominante cromatica
+        dominants = [
+            (low_percent, "basse frequenze", "LOW"),
+            (mid_percent, "frequenze medie", "MID"),
+            (high_percent, "alte frequenze", "HIGH"),
+        ]
+        dominant = max(dominants, key=lambda x: x[0])
+
+        intensity = effects.get('intensity', 1.0)
+        speed = effects.get('speed', 0.1)
+        randomness = effects.get('randomness', 0.0)
+
+        intensity_word = "delicata" if intensity < 0.8 else ("potente" if intensity > 1.5 else "bilanciata")
+        speed_word = "lenta e meditativa" if speed < 0.3 else ("dinamica e fluida" if speed < 1.0 else "frenetica e intensa")
+        randomness_word = "perfettamente deterministica" if randomness == 0 else ("con lievi variazioni organiche" if randomness < 0.4 else "ricca di variazioni casuali")
+
+        w, h = self.get_resolution(video_quality, aspect_ratio)
+
+        now = datetime.now()
+        date_codec = now.strftime("%Y.%m.%d")
+        time_codec = now.strftime("%H:%M")
+        duration_mm = int(self.duration // 60)
+        duration_ss = int(self.duration % 60)
+        duration_codec = f"{duration_mm:02d}:{duration_ss:02d}"
+
+        report = f"""[AudioLineTwo] // Audio Visual // :: 00
+{pattern_type.upper()} · {date_codec} · {duration_codec}
+
+══════════════════════════════════════════════════════════════════
+  EFFETTI WAVE
+══════════════════════════════════════════════════════════════════
+
+  TIPO_ONDA   {pattern_label}
+  INTENSITA   {intensity:.1f}x  /  {intensity_word}
+  VELOCITA    {speed:.2f}x  /  {speed_word}
+  CASUALITA   {randomness*100:.0f}%  /  {randomness_word}
+
+══════════════════════════════════════════════════════════════════
+  DISTRIBUZIONE CROMATICA
+══════════════════════════════════════════════════════════════════
+
+  LOW   20–250 Hz       {low_percent:.1f}%
+  MID   250–4000 Hz     {mid_percent:.1f}%
+  HIGH  4000–20000 Hz   {high_percent:.1f}%
+
+  dominante › {dominant[1]} ({dominant[0]:.1f}%)
+
+══════════════════════════════════════════════════════════════════
+  DESCRIZIONE  //  copia · incolla · YouTube · Reels · TikTok
+══════════════════════════════════════════════════════════════════
+
+[AudioLineTwo] // Audio Visual // :: 00
+
+Una visualizzazione audio generata in tempo reale dalle frequenze
+di "{audio_filename}".
+
+Il pattern "{pattern_label}" risponde ai dati spettrali del brano:
+le {dominant[1]} dominano con il {dominant[0]:.1f}% dell'energia visiva,
+creando un'animazione {intensity_word} e {speed_word},
+{randomness_word}.
+
+  RESOLUTION  {w}x{h} px  ·  {aspect_ratio}
+  FRAMERATE   {fps} FPS  ·  {total_frames:,} frames
+  DURATION    {self.duration:.1f}s
+  SAMPLERATE  {self.sr:,} Hz
+
+──────────────────────────────────────────────────────────────────
+#AudioVisualization #MusicVisualizer #AudioLineTwo #LOOP507
+#Waves #SoundArt #MusicArt #VisualMusic #FrequencyArt
+#AudioReactive #WaveForm #SoundDesign #GenerativeArt
+──────────────────────────────────────────────────────────────────
+
+══════════════════════════════════════════════════════════════════
+  INFO BRANO
+══════════════════════════════════════════════════════════════════
+
+  TRACK       {audio_filename}
+  DURATION    {duration_codec}
+  SAMPLERATE  {self.sr:,} Hz
+  RESOLUTION  {w}x{h} px  ·  {aspect_ratio}
+  FRAMES      {total_frames:,} @ {fps} FPS
+  GENERATED   {date_codec}  {time_codec}
+
+══════════════════════════════════════════════════════════════════
+  AudioLineTwo WAVES EDITION — by LOOP507
+══════════════════════════════════════════════════════════════════
+"""
+        return report
+
     def create_video_no_audio(self, output_path, pattern_type, colors, effects, fps, 
                              aspect_ratio="16:9 (Standard)", video_quality="Media (1280x720)", 
                              title_settings=None):
@@ -696,6 +821,14 @@ class AudioVisualizer:
         with st.expander("📊 **WAVE GENERATION REPORT** - Clicca per vedere i dettagli", expanded=True):
             st.markdown(report)
         
+        # Salva report social in session_state
+        social_report = self.generate_social_report(
+            audio_filename, video_title, pattern_type,
+            colors, effects, fps, total_frames,
+            video_quality, aspect_ratio, low_percent, mid_percent, high_percent
+        )
+        st.session_state['social_report'] = social_report
+
         # Anche come info success
         st.success(f"""
         ✅ **Video Wave generato con successo!**
@@ -716,6 +849,12 @@ st.set_page_config(
 )
 
 def main():
+    # Inizializza session_state
+    for _key in ('run_preview', 'preview_frames', 'create_video',
+                 'video_bytes', 'video_filename', 'video_path', 'social_report'):
+        if _key not in st.session_state:
+            st.session_state[_key] = None
+
     st.sidebar.header("🌊 Wave Controls")
     
     # Titolo principale
@@ -851,107 +990,106 @@ def main():
             }
             
         st.success(f"✅ Audio caricato! Durata: {duration:.1f}s, Sample Rate: {sr}Hz")
-        
-        # Controlli playback
+
+        # ── Bottoni azione ──────────────────────────────────────────────
         col1, col2, col3 = st.columns([1, 1, 2])
-        
         with col1:
-            if st.button("🌊 Avvia Wave Viz"):
-                st.session_state.start_viz = True
-        
+            if st.button("🔍 Preview Rapida"):
+                st.session_state['run_preview'] = True
+                st.session_state['preview_frames'] = None  # reset
         with col2:
-            pattern_names = {
-                "waves": "Onde Classiche",
-                "interference": "Onde Interferenza", 
-                "flowing": "Onde Fluide",
-                "varied_amplitude": "Onde Ampiezza Variabile",
-                "varied_shape": "Onde Forma Variabile",
-                "varied_motion": "Onde Movimento Variabile"
-            }
-            st.write(f"Wave: **{pattern_names.get(pattern_type, pattern_type)}**")
-            
-        with col3:
             if st.button("🎥 Crea Video Wave", help="Genera un video della visualizzazione wave"):
-                st.session_state.create_video = True
-        
-        # Visualizzazione in tempo reale
-        if 'start_viz' in st.session_state and st.session_state.start_viz:
-            placeholder = st.empty()
-            
-            total_frames = int(visualizer.duration * frame_rate)
-            progress_bar = st.progress(0)
-            
-            # Calcola il passo temporale per frame
-            time_step = visualizer.times[-1] / total_frames
-            
-            for frame in range(total_frames):
-                # Calcola il tempo corrente
-                current_time = frame * time_step
-                
-                # Trova l'indice temporale più vicino
-                time_idx = np.argmin(np.abs(visualizer.times - current_time))
-                
-                # Crea frame
-                fig = visualizer.create_pattern_frame(time_idx, pattern_type, colors, effects, aspect_ratio, title_settings)
-                
-                # Mostra frame
-                placeholder.pyplot(fig, clear_figure=True)
-                plt.close(fig)
-                
-                # Aggiorna progress
-                progress = (frame + 1) / total_frames
-                progress_bar.progress(progress)
-                
-                # Controllo timing
-                time.sleep(1.0 / frame_rate)
-            
-            st.session_state.start_viz = False
-            st.success("🌊 Visualizzazione wave completata!")
-        
-        # Creazione video
-        if 'create_video' in st.session_state and st.session_state.create_video:
+                st.session_state['create_video'] = True
+                st.session_state['video_bytes'] = None   # reset
+                st.session_state['video_filename'] = None
+                st.session_state['social_report'] = None
+        with col3:
+            pattern_labels_ui = {
+                "waves": "🌊 Onde Classiche",
+                "interference": "🔄 Interferenza",
+                "flowing": "💫 Fluide",
+                "am": "📡 AM",
+                "fm": "🎛️ FM",
+                "reflected": "🪞 Riflesse",
+                "varied_amplitude": "📈 Ampiezza Var.",
+                "varied_shape": "🔷 Forma Var.",
+                "varied_motion": "↕️ Movimento Var."
+            }
+            st.write(f"Wave selezionata: **{pattern_labels_ui.get(pattern_type, pattern_type)}**")
+
+        # ── PREVIEW a bassa risoluzione ─────────────────────────────────
+        if st.session_state.get('run_preview'):
+            with st.spinner("🔍 Generando preview (12 frame a 320×180)..."):
+                preview_frames = visualizer.generate_preview_frames(
+                    pattern_type, colors, effects, num_frames=12
+                )
+                st.session_state['preview_frames'] = preview_frames
+                st.session_state['run_preview'] = False
+
+        if st.session_state.get('preview_frames'):
+            st.markdown("#### 🔍 Preview — campioni dal brano")
+            cols = st.columns(4)
+            for i, frame_bytes in enumerate(st.session_state['preview_frames']):
+                cols[i % 4].image(frame_bytes, use_container_width=True)
+
+        # ── CREAZIONE VIDEO ──────────────────────────────────────────────
+        if st.session_state.get('create_video'):
             with st.spinner("🎥 Creazione video wave in corso (potrebbe richiedere alcuni minuti)..."):
-                # Crea file video temporaneo
                 with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as tmpfile:
                     video_path = tmpfile.name
-                
-                # Ottieni il nome del file audio per il report
-                audio_filename = uploaded_file.name if uploaded_file.name else "Unknown Track"
-                
-                # Crea il video con audio
+
+                audio_filename_str = uploaded_file.name if uploaded_file.name else "Unknown Track"
+
                 success = visualizer.create_video_with_audio(
-                    video_path, pattern_type, colors, effects, frame_rate, 
-                    audio_filename, video_quality, aspect_ratio, video_title, title_settings
+                    video_path, pattern_type, colors, effects, frame_rate,
+                    audio_filename_str, video_quality, aspect_ratio, video_title, title_settings
                 )
-                
+
                 if success:
-                    # Mostra il video e il pulsante di download
-                    st.video(video_path)
-                    
-                    # Pulsante di download
                     with open(video_path, "rb") as f:
                         video_bytes = f.read()
-                    
-                    pattern_names = {
-                        "waves": "classic_waves",
-                        "interference": "interference_structured", 
-                        "flowing": "stratified_horizontal",
-                        "varied_amplitude": "varied_amplitude",
-                        "varied_shape": "varied_shape",
-                        "varied_motion": "varied_motion"
-                    }
-                    
-                    st.download_button(
-                        label="📥 Scarica Video Wave",
-                        data=video_bytes,
-                        file_name=f"audioline_wave_{pattern_names.get(pattern_type, pattern_type)}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4",
-                        mime="video/mp4"
-                    )
+
+                    slug = pattern_type.replace(" ", "_")
+                    ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+                    video_filename = f"audioline_wave_{slug}_{ts}.mp4"
+
+                    st.session_state['video_bytes'] = video_bytes
+                    st.session_state['video_filename'] = video_filename
+                    st.session_state['video_path'] = video_path
                 else:
                     st.error("Errore nella creazione del video wave.")
-                
-                # Pulisci lo stato
-                st.session_state.create_video = False
+
+            st.session_state['create_video'] = False
+
+        # ── DOWNLOAD VIDEO (stabile, fuori dal bottone) ──────────────────
+        if st.session_state.get('video_bytes'):
+            st.video(st.session_state['video_path'])
+            st.download_button(
+                label="📥 Scarica Video Wave",
+                data=st.session_state['video_bytes'],
+                file_name=st.session_state['video_filename'],
+                mime="video/mp4",
+                key="dl_video"
+            )
+
+        # ── DOWNLOAD REPORT SOCIAL (stabile, fuori dal bottone) ──────────
+        if st.session_state.get('social_report'):
+            st.markdown("---")
+            st.markdown("#### 📄 Report Social / YouTube")
+            st.text_area(
+                "Anteprima report",
+                value=st.session_state['social_report'],
+                height=250,
+                disabled=True
+            )
+            ts_report = datetime.now().strftime('%Y%m%d_%H%M%S')
+            st.download_button(
+                label="📋 Scarica Report Social (.txt)",
+                data=st.session_state['social_report'].encode('utf-8'),
+                file_name=f"audioline_report_{ts_report}.txt",
+                mime="text/plain",
+                key="dl_report"
+            )
     
     else:
         # Schermata iniziale

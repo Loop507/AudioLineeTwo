@@ -567,31 +567,6 @@ class AudioVisualizer:
         report = f"""[AudioLineTwo] // Audio Visual // :: 00
 {pattern_type.upper()} · {date_codec} · {duration_codec}
 
-══════════════════════════════════════════════════════════════════
-  EFFETTI WAVE
-══════════════════════════════════════════════════════════════════
-
-  TIPO_ONDA   {pattern_label}
-  INTENSITA   {intensity:.1f}x  /  {intensity_word}
-  VELOCITA    {speed:.2f}x  /  {speed_word}
-  CASUALITA   {randomness*100:.0f}%  /  {randomness_word}
-
-══════════════════════════════════════════════════════════════════
-  DISTRIBUZIONE CROMATICA
-══════════════════════════════════════════════════════════════════
-
-  LOW   20–250 Hz       {low_percent:.1f}%
-  MID   250–4000 Hz     {mid_percent:.1f}%
-  HIGH  4000–20000 Hz   {high_percent:.1f}%
-
-  dominante › {dominant[1]} ({dominant[0]:.1f}%)
-
-══════════════════════════════════════════════════════════════════
-  DESCRIZIONE  //  copia · incolla · YouTube · Reels · TikTok
-══════════════════════════════════════════════════════════════════
-
-[AudioLineTwo] // Audio Visual // :: 00
-
 Una visualizzazione audio generata in tempo reale dalle frequenze
 di "{audio_filename}".
 
@@ -600,20 +575,29 @@ le {dominant[1]} dominano con il {dominant[0]:.1f}% dell'energia visiva,
 creando un'animazione {intensity_word} e {speed_word},
 {randomness_word}.
 
+::  EFFETTI WAVE
+
+  TIPO_ONDA   {pattern_label}
+  INTENSITA   {intensity:.1f}x  /  {intensity_word}
+  VELOCITA    {speed:.2f}x  /  {speed_word}
+  CASUALITA   {randomness*100:.0f}%  /  {randomness_word}
+
+:: DISTRIBUZIONE CROMATICA
+
+  LOW   20–250 Hz       {low_percent:.1f}%
+  MID   250–4000 Hz     {mid_percent:.1f}%
+  HIGH  4000–20000 Hz   {high_percent:.1f}%
+
+  dominante › {dominant[1]} ({dominant[0]:.1f}%)
+
+::  INFO VIDEO
+
   RESOLUTION  {w}x{h} px  ·  {aspect_ratio}
   FRAMERATE   {fps} FPS  ·  {total_frames:,} frames
   DURATION    {self.duration:.1f}s
   SAMPLERATE  {self.sr:,} Hz
 
-──────────────────────────────────────────────────────────────────
-#AudioVisualization #MusicVisualizer #AudioLineTwo #LOOP507
-#Waves #SoundArt #MusicArt #VisualMusic #FrequencyArt
-#AudioReactive #WaveForm #SoundDesign #GenerativeArt
-──────────────────────────────────────────────────────────────────
-
-══════════════════════════════════════════════════════════════════
-  INFO BRANO
-══════════════════════════════════════════════════════════════════
+:: INFO BRANO
 
   TRACK       {audio_filename}
   DURATION    {duration_codec}
@@ -622,9 +606,15 @@ creando un'animazione {intensity_word} e {speed_word},
   FRAMES      {total_frames:,} @ {fps} FPS
   GENERATED   {date_codec}  {time_codec}
 
-══════════════════════════════════════════════════════════════════
-  AudioLineTwo WAVES EDITION — by LOOP507
-══════════════════════════════════════════════════════════════════
+__________________________________________
+#AudioVisualization #MusicVisualizer #AudioLineTwo
+#Waves #SoundArt #MusicArt #VisualMusic #FrequencyArt
+#AudioReactive #WaveForm #SoundDesign #GenerativeArt
+__________________________________________
+
+AudioVisualization, MusicVisualizer, AudioLineTwo,
+Waves, SoundArt, MusicArt, VisualMusic, FrequencyArt,
+AudioReactive, WaveForm, SoundDesign, GenerativeArt,
 """
         return report
 

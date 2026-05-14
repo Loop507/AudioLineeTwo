@@ -539,11 +539,11 @@ class AudioVisualizer:
         }
         pattern_label = pattern_labels.get(pattern_type, pattern_type.title())
 
-        # Determina dominante cromatica
+        # Dominant frequency band
         dominants = [
-            (low_percent, "basse frequenze", "LOW"),
-            (mid_percent, "frequenze medie", "MID"),
-            (high_percent, "alte frequenze", "HIGH"),
+            (low_percent, "low frequencies", "Red Line",   "LOW"),
+            (mid_percent,  "mid frequencies", "Blue Line",  "MID"),
+            (high_percent, "high frequencies","White Line", "HIGH"),
         ]
         dominant = max(dominants, key=lambda x: x[0])
 
@@ -551,9 +551,9 @@ class AudioVisualizer:
         speed = effects.get('speed', 0.1)
         randomness = effects.get('randomness', 0.0)
 
-        intensity_word = "delicata" if intensity < 0.8 else ("potente" if intensity > 1.5 else "bilanciata")
-        speed_word = "lenta e meditativa" if speed < 0.3 else ("dinamica e fluida" if speed < 1.0 else "frenetica e intensa")
-        randomness_word = "perfettamente deterministica" if randomness == 0 else ("con lievi variazioni organiche" if randomness < 0.4 else "ricca di variazioni casuali")
+        intensity_word   = "delicate"           if intensity  < 0.8 else ("powerful"          if intensity  > 1.5 else "balanced")
+        speed_word       = "slow and meditative" if speed     < 0.3 else ("frenetic and intense" if speed  > 1.0 else "dynamic and fluid")
+        randomness_word  = "perfectly deterministic" if randomness == 0 else ("with slight organic variations" if randomness < 0.4 else "rich in random variations")
 
         w, h = self.get_resolution(video_quality, aspect_ratio)
 
@@ -564,57 +564,61 @@ class AudioVisualizer:
         duration_ss = int(self.duration % 60)
         duration_codec = f"{duration_mm:02d}:{duration_ss:02d}"
 
-        report = f"""[AudioLineTwo] // Audio Visual // :: 00
+        track_name = audio_filename.rsplit('.', 1)[0] if '.' in audio_filename else audio_filename
+
+        report = f"""#generativeart #audioreactive #frequencyart
+
+Visual Experiments in Code _ 00
 {pattern_type.upper()} · {date_codec} · {duration_codec}
 
-Una visualizzazione audio generata in tempo reale dalle frequenze
-di "{audio_filename}".
+An audio visualization generated in real time from the frequencies
+of *{track_name}*.
 
-Il pattern "{pattern_label}" risponde ai dati spettrali del brano:
-le {dominant[1]} dominano con il {dominant[0]:.1f}% dell'energia visiva,
-creando un'animazione {intensity_word} e {speed_word},
+The *{pattern_label}* pattern responds to the song's spectral data:
+{dominant[1]} dominate with {dominant[0]:.1f}% of the visual energy,
+creating a {intensity_word}, {speed_word} animation,
 {randomness_word}.
 
-::  EFFETTI WAVE
+:: WAVE EFFECTS
 
-  TIPO_ONDA   {pattern_label}
-  INTENSITA   {intensity:.1f}x  /  {intensity_word}
-  VELOCITA    {speed:.2f}x  /  {speed_word}
-  CASUALITA   {randomness*100:.0f}%  /  {randomness_word}
+  WAVE TYPE    {pattern_label}
+  INTENSITY    {intensity:.1f}x  /  {intensity_word}
+  SPEED        {speed:.2f}x  /  {speed_word}
+  RANDOMNESS   {randomness*100:.0f}%  /  {randomness_word}
 
-:: DISTRIBUZIONE CROMATICA
+:: COLOR LINE
 
-  LOW   20–250 Hz       {low_percent:.1f}%
-  MID   250–4000 Hz     {mid_percent:.1f}%
-  HIGH  4000–20000 Hz   {high_percent:.1f}%
+  Red Line:    LOW   20–250 Hz       {low_percent:.1f}%
+  Blue Line:   MID   250–4000 Hz     {mid_percent:.1f}%
+  White Line:  HIGH  4000–20000 Hz   {high_percent:.1f}%
 
-  dominante › {dominant[1]} ({dominant[0]:.1f}%)
+  Dominant › {dominant[1]} ({dominant[0]:.1f}%)
 
-::  INFO VIDEO
+:: VIDEO INFO
 
-  RESOLUTION  {w}x{h} px  ·  {aspect_ratio}
-  FRAMERATE   {fps} FPS  ·  {total_frames:,} frames
-  DURATION    {self.duration:.1f}s
-  SAMPLERATE  {self.sr:,} Hz
+  RESOLUTION   {w}x{h} px  ·  {aspect_ratio}
+  FRAMERATE    {fps} FPS  ·  {total_frames:,} frames
+  DURATION     {self.duration:.1f}s
+  SAMPLERATE   {self.sr:,} Hz
 
-:: INFO BRANO
+:: TRACK INFO
 
-  TRACK       {audio_filename}
-  DURATION    {duration_codec}
-  SAMPLERATE  {self.sr:,} Hz
-  RESOLUTION  {w}x{h} px  ·  {aspect_ratio}
-  FRAMES      {total_frames:,} @ {fps} FPS
-  GENERATED   {date_codec}  {time_codec}
+  TRACK        *{track_name}*
+  DURATION     {duration_codec}
+  SAMPLERATE   {self.sr:,} Hz
+  RESOLUTION   {w}x{h} px  ·  {aspect_ratio}
+  FRAMES       {total_frames:,} @ {fps} FPS
+  GENERATED    {date_codec}  {time_codec}
 
 __________________________________________
-#AudioVisualization #MusicVisualizer #AudioLineTwo
-#Waves #SoundArt #MusicArt #VisualMusic #FrequencyArt
-#AudioReactive #WaveForm #SoundDesign #GenerativeArt
+#audiovisualization #musicvisualizer #audiolinetwo
+#waves #soundart #musicart #visualmusic #frequencyart
+#audioreactive #waveform #sounddesign #generativeart
 __________________________________________
 
-AudioVisualization, MusicVisualizer, AudioLineTwo,
-Waves, SoundArt, MusicArt, VisualMusic, FrequencyArt,
-AudioReactive, WaveForm, SoundDesign, GenerativeArt,
+audiovisualization, musicvisualizer, audiolinetwo,
+waves, soundart, musicart, visualmusic, frequencyart,
+audioreactive, waveform, sounddesign, generativeart,
 """
         return report
 

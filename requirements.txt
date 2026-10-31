@@ -1,7 +1,6 @@
-streamlit
-numpy
-matplotlib
-librosa
-scipy
-imageio
-imageio-ffmpeg
+streamlit>=1.50
+numpy>=1.26
+scipy>=1.11
+matplotlib>=3.8
+librosa>=0.10
+imageio-ffmpeg>=0.5

@@ -1,110 +1,125 @@
 import streamlit as st
 import numpy as np
-import matplotlib.pyplot as plt
+from matplotlib.figure import Figure
+from matplotlib.backends.backend_agg import FigureCanvasAgg
 import librosa
 import io
-import time
+import hashlib
 import tempfile
 import os
-import imageio
+import shutil
 import subprocess
+import imageio_ffmpeg
 from scipy.io import wavfile
 from datetime import datetime
 
+# Riferimento temporale: ~86.13 "tick" al secondo (44100 Hz / hop 512).
+# La velocità delle onde dipende dai secondi, non dal sample rate del file.
+REF_TICKS_PER_SEC = 44100 / 512
+BAND_FLOOR = 0.1
+
 # Classe AudioVisualizer semplificata
 class AudioVisualizer:
+    """Analizzatore + renderer. Dopo __init__ non muta stato: sicuro con st.cache_resource."""
+
     def __init__(self, audio_data, sr, duration=None):
         self.audio_data = audio_data
         self.sr = sr
         self.original_duration = len(audio_data) / sr
         self.duration = min(duration, self.original_duration) if duration else self.original_duration
         self.setup_frequency_analysis()
-        
-        # Variabili per il tracking dei colori
-        self.color_statistics = {
-            'low_total': 0,
-            'mid_total': 0,
-            'high_total': 0,
-            'total_energy': 0
-        }
-        
+
+    @staticmethod
+    def _band_idx(freqs, lo, hi, last=False):
+        """Indici dei bin in [lo, hi) (l'ultima banda include hi). Mai vuoto."""
+        mask = (freqs >= lo) & ((freqs <= hi) if last else (freqs < hi))
+        idx = np.where(mask)[0]
+        if idx.size == 0:
+            idx = np.array([int(np.argmin(np.abs(freqs - lo)))])
+        return idx
+
     def setup_frequency_analysis(self):
-        """Configurazione analisi frequenze"""
-        # Parametri per l'analisi FFT
+        """Analisi FFT: calcola una volta sola gli inviluppi delle 3 bande, poi libera lo spettrogramma"""
         self.hop_length = 512
         self.n_fft = 2048
-        
-        # Calcola spettrogramma
-        self.stft = librosa.stft(
-            self.audio_data, 
-            n_fft=self.n_fft, 
-            hop_length=self.hop_length
-        )
-        self.magnitude = np.abs(self.stft)
-        
-        # Calcola il tempo per ogni frame
-        self.times = librosa.times_like(self.stft, sr=self.sr, hop_length=self.hop_length)
-        
-        # Definisci bande di frequenza
-        self.freq_bins = librosa.fft_frequencies(sr=self.sr, n_fft=self.n_fft)
-        self.low_freq_idx = np.where((self.freq_bins >= 20) & (self.freq_bins <= 250))[0]
-        self.mid_freq_idx = np.where((self.freq_bins >= 250) & (self.freq_bins <= 4000))[0]
-        self.high_freq_idx = np.where((self.freq_bins >= 4000) & (self.freq_bins <= 20000))[0]
-        
-        # Trova il picco massimo per la normalizzazione
-        self.max_low = np.max(np.mean(self.magnitude[self.low_freq_idx, :], axis=0))
-        self.max_mid = np.max(np.mean(self.magnitude[self.mid_freq_idx, :], axis=0))
-        self.max_high = np.max(np.mean(self.magnitude[self.high_freq_idx, :], axis=0))
-        
-    def get_frequency_bands(self, time_idx):
-        """Estrai intensità per bande di frequenza"""
-        if time_idx >= self.magnitude.shape[1]:
-            return 0, 0, 0
-            
-        low_energy = np.mean(self.magnitude[self.low_freq_idx, time_idx])
-        mid_energy = np.mean(self.magnitude[self.mid_freq_idx, time_idx])
-        high_energy = np.mean(self.magnitude[self.high_freq_idx, time_idx])
-        
-        return low_energy, mid_energy, high_energy
-    
+
+        stft = librosa.stft(self.audio_data, n_fft=self.n_fft, hop_length=self.hop_length)
+        magnitude = np.abs(stft)
+        del stft
+
+        self.times = librosa.times_like(magnitude, sr=self.sr, hop_length=self.hop_length)
+        freqs = librosa.fft_frequencies(sr=self.sr, n_fft=self.n_fft)
+        bands = [
+            self._band_idx(freqs, 20, 250),
+            self._band_idx(freqs, 250, 4000),
+            self._band_idx(freqs, 4000, 20000, last=True),
+        ]
+
+        # Inviluppo medio per banda (per il disegno) e potenza reale (per il report)
+        env = np.vstack([magnitude[idx, :].mean(axis=0) for idx in bands])
+        self.band_power = np.vstack([(magnitude[idx, :] ** 2).sum(axis=0) for idx in bands])
+        del magnitude  # evita centinaia di MB su brani lunghi
+
+        peak = env.max(axis=1, keepdims=True)
+        norm = np.divide(env, peak, out=np.zeros_like(env), where=peak > 0)
+        self.norm_bands = np.maximum(norm, BAND_FLOOR)
+
     def get_normalized_bands(self, time_idx):
-        """Restituisce le bande normalizzate"""
-        low, mid, high = self.get_frequency_bands(time_idx)
-        
-        # Normalizza rispetto ai valori massimi
-        low_norm = low / self.max_low if self.max_low > 0 else 0
-        mid_norm = mid / self.max_mid if self.max_mid > 0 else 0
-        high_norm = high / self.max_high if self.max_high > 0 else 0
-        
-        # Applica un minimo per evitare valori troppo bassi
-        low_norm = max(low_norm, 0.1)
-        mid_norm = max(mid_norm, 0.1)
-        high_norm = max(high_norm, 0.1)
-        
-        return low_norm, mid_norm, high_norm
-    
-    def update_color_statistics(self, low_norm, mid_norm, high_norm):
-        """Aggiorna le statistiche sui colori per il calcolo delle percentuali"""
-        total_frame_energy = low_norm + mid_norm + high_norm
-        
-        self.color_statistics['low_total'] += low_norm
-        self.color_statistics['mid_total'] += mid_norm  
-        self.color_statistics['high_total'] += high_norm
-        self.color_statistics['total_energy'] += total_frame_energy
-    
-    def get_color_percentages(self):
-        """Calcola le percentuali finali di utilizzo dei colori"""
-        total = self.color_statistics['total_energy']
-        
+        """Restituisce le bande normalizzate (0.1 - 1.0)"""
+        t = min(max(int(time_idx), 0), self.norm_bands.shape[1] - 1)
+        low, mid, high = self.norm_bands[:, t]
+        return float(low), float(mid), float(high)
+
+    def _time_offset(self, time_idx, effects):
+        """Fase temporale in secondi (indipendente dal sample rate)"""
+        t = float(self.times[min(max(int(time_idx), 0), len(self.times) - 1)])
+        return t * REF_TICKS_PER_SEC * effects.get('speed', 0.1)
+
+    @staticmethod
+    def _rand(effects):
+        """Offset casuale riproducibile: l'rng è seedato per (seed, frame)"""
+        randomness = effects.get('randomness', 0.0)
+        rng = effects.get('rng')
+        return rng.random() * randomness if (randomness > 0 and rng is not None) else 0.0
+
+    # ── Statistiche (locali al render, non stato dell'oggetto) ──────────────
+    @staticmethod
+    def new_statistics():
+        return {'low_total': 0.0, 'mid_total': 0.0, 'high_total': 0.0, 'total_energy': 0.0,
+                'pow_low': 0.0, 'pow_mid': 0.0, 'pow_high': 0.0}
+
+    def update_statistics(self, stats, time_idx):
+        t = min(max(int(time_idx), 0), self.norm_bands.shape[1] - 1)
+        low, mid, high = self.get_normalized_bands(t)
+        stats['low_total'] += low
+        stats['mid_total'] += mid
+        stats['high_total'] += high
+        stats['total_energy'] += low + mid + high
+        p_low, p_mid, p_high = self.band_power[:, t]
+        stats['pow_low'] += float(p_low)
+        stats['pow_mid'] += float(p_mid)
+        stats['pow_high'] += float(p_high)
+
+    @staticmethod
+    def get_color_percentages(stats):
+        """Peso visivo: ogni banda normalizzata sul proprio picco"""
+        total = stats['total_energy']
         if total == 0:
             return 0, 0, 0
-            
-        low_percent = (self.color_statistics['low_total'] / total) * 100
-        mid_percent = (self.color_statistics['mid_total'] / total) * 100
-        high_percent = (self.color_statistics['high_total'] / total) * 100
-        
-        return low_percent, mid_percent, high_percent
-    
+        return (stats['low_total'] / total * 100,
+                stats['mid_total'] / total * 100,
+                stats['high_total'] / total * 100)
+
+    @staticmethod
+    def get_spectral_shares(stats):
+        """Quota reale di energia spettrale per banda (potenza non normalizzata)"""
+        total = stats['pow_low'] + stats['pow_mid'] + stats['pow_high']
+        if total == 0:
+            return 0, 0, 0
+        return (stats['pow_low'] / total * 100,
+                stats['pow_mid'] / total * 100,
+                stats['pow_high'] / total * 100)
+
     def get_resolution(self, video_quality, aspect_ratio):
         """Determina la risoluzione in pixel per il video"""
         base_resolutions = {
@@ -139,69 +154,67 @@ class AudioVisualizer:
     def create_pattern_frame(self, time_idx, pattern_type="waves", colors=None, effects=None,
                             aspect_ratio="16:9 (Standard)", title_settings=None, 
                             resolution_px=None, dpi=100):
-        """Crea un frame del pattern basato sulle frequenze - SOLO WAVES con effetti"""
+        """Crea un frame (Figure OO, niente stato globale pyplot)"""
         low_norm, mid_norm, high_norm = self.get_normalized_bands(time_idx)
-        
-        # Aggiorna statistiche colori
-        self.update_color_statistics(low_norm, mid_norm, high_norm)
-        
-        # Colori default se non specificati
+
         if colors is None:
             colors = {
                 'low': '#FF0000', 'mid': '#0000FF', 'high': '#FFFFFF', 'bg': '#000000'
             }
-        
-        # Effetti default se non specificati
-        if effects is None:
-            effects = {
-                'intensity': 1.0,
-                'speed': 0.1,
-                'randomness': 0.0
-            }
-        
-        # Ottieni impostazioni aspect ratio
+
+        effects = dict(effects) if effects else {'intensity': 1.0, 'speed': 0.1, 'randomness': 0.0}
+        effects['rng'] = np.random.default_rng([int(effects.get('seed', 507)), int(time_idx)])
+
         xlim, ylim = self.get_aspect_ratio_limits(aspect_ratio)
-        
-        # Determina figure size basato su risoluzione
+
         if resolution_px and dpi:
             figsize = (resolution_px[0] / dpi, resolution_px[1] / dpi)
         else:
-            # Modalità preview
             base_width = 10
             figsize = (base_width, base_width * (ylim / xlim))
-        
-        fig, ax = plt.subplots(figsize=figsize, facecolor=colors['bg'], dpi=dpi)
+
+        fig = Figure(figsize=figsize, facecolor=colors['bg'], dpi=dpi)
+        FigureCanvasAgg(fig)
+        ax = fig.add_axes([0, 0, 1, 1])  # a tutto frame: dimensione di output esatta
         ax.set_facecolor(colors['bg'])
-        
-        # Disegna il pattern wave specifico
-        if pattern_type == "waves":
-            self.draw_classic_waves(ax, low_norm, mid_norm, high_norm, colors, effects, time_idx, xlim, ylim)
-        elif pattern_type == "interference":
-            self.draw_interference_waves(ax, low_norm, mid_norm, high_norm, colors, effects, time_idx, xlim, ylim)
-        elif pattern_type == "flowing":
-            self.draw_flowing_waves(ax, low_norm, mid_norm, high_norm, colors, effects, time_idx, xlim, ylim)
-        elif pattern_type == "am":
-            self.draw_am_waves(ax, low_norm, mid_norm, high_norm, colors, effects, time_idx, xlim, ylim)
-        elif pattern_type == "fm":
-            self.draw_fm_waves(ax, low_norm, mid_norm, high_norm, colors, effects, time_idx, xlim, ylim)
-        elif pattern_type == "reflected":
-            self.draw_reflected_waves(ax, low_norm, mid_norm, high_norm, colors, effects, time_idx, xlim, ylim)
-        elif pattern_type == "varied_amplitude":
-            self.draw_varied_amplitude_waves(ax, low_norm, mid_norm, high_norm, colors, effects, time_idx, xlim, ylim)
-        elif pattern_type == "varied_shape":
-            self.draw_varied_shape_waves(ax, low_norm, mid_norm, high_norm, colors, effects, time_idx, xlim, ylim)
-        elif pattern_type == "varied_motion":
-            self.draw_varied_motion_waves(ax, low_norm, mid_norm, high_norm, colors, effects, time_idx, xlim, ylim)
-            
-        # Aggiungi titolo se specificato
+
+        drawers = {
+            "waves": self.draw_classic_waves,
+            "interference": self.draw_interference_waves,
+            "flowing": self.draw_flowing_waves,
+            "am": self.draw_am_waves,
+            "fm": self.draw_fm_waves,
+            "reflected": self.draw_reflected_waves,
+            "varied_amplitude": self.draw_varied_amplitude_waves,
+            "varied_shape": self.draw_varied_shape_waves,
+            "varied_motion": self.draw_varied_motion_waves,
+        }
+        drawers.get(pattern_type, self.draw_classic_waves)(
+            ax, low_norm, mid_norm, high_norm, colors, effects, time_idx, xlim, ylim
+        )
+
         if title_settings and title_settings['text']:
             self.draw_title(ax, title_settings, xlim, ylim)
-            
+
         ax.set_xlim(0, xlim)
         ax.set_ylim(0, ylim)
         ax.axis('off')
-        
+
         return fig
+
+    @staticmethod
+    def fig_to_rgb(fig, size):
+        """Figure -> array RGB uint8 esattamente (h, w, 3); corregge eventuali off-by-one"""
+        fig.canvas.draw()
+        arr = np.asarray(fig.canvas.buffer_rgba())[:, :, :3]
+        w, h = size
+        if arr.shape[0] != h or arr.shape[1] != w:
+            out = np.empty((h, w, 3), dtype=np.uint8)
+            out[:] = arr[0, 0]
+            hh, ww = min(h, arr.shape[0]), min(w, arr.shape[1])
+            out[:hh, :ww] = arr[:hh, :ww]
+            arr = out
+        return np.ascontiguousarray(arr)
 
     def draw_title(self, ax, title_settings, xlim, ylim):
         """Disegna il titolo in base alle impostazioni di posizione"""
@@ -242,43 +255,41 @@ class AudioVisualizer:
         x = np.linspace(0, xlim, 500)
         
         # Usa l'indice temporale per sincronizzare le onde con la musica
-        time_offset = time_idx * effects.get('speed', 0.1)
+        time_offset = self._time_offset(time_idx, effects)
         intensity = effects.get('intensity', 1.0)
-        randomness = effects.get('randomness', 0.0)
         
         # Onde basse - ampie e lente
         for i in range(3):
             y_offset = ylim*0.2 + i * (ylim*0.25)
-            random_offset = np.random.random() * randomness if randomness > 0 else 0
+            random_offset = self._rand(effects)
             wave = y_offset + low * intensity * np.sin(2 * np.pi * (0.3 + i * 0.2) * x/xlim + time_offset + random_offset)
             ax.plot(x, wave, color=colors['low'], linewidth=4*low*intensity, alpha=0.8)
         
         # Onde medie
         for i in range(4):
             y_offset = ylim*0.15 + i * (ylim*0.2)
-            random_offset = np.random.random() * randomness if randomness > 0 else 0
+            random_offset = self._rand(effects)
             wave = y_offset + mid * intensity * 0.8 * np.sin(2 * np.pi * (0.8 + i * 0.4) * x/xlim + time_offset + random_offset)
             ax.plot(x, wave, color=colors['mid'], linewidth=3*mid*intensity, alpha=0.7)
         
         # Onde acute - rapide e piccole
         for i in range(5):
             y_offset = ylim*0.1 + i * (ylim*0.18)
-            random_offset = np.random.random() * randomness if randomness > 0 else 0
+            random_offset = self._rand(effects)
             wave = y_offset + high * intensity * 0.6 * np.sin(2 * np.pi * (1.5 + i * 0.6) * x/xlim + time_offset + random_offset)
             ax.plot(x, wave, color=colors['high'], linewidth=(1.5+high)*intensity, alpha=0.9)
     
     def draw_interference_waves(self, ax, low, mid, high, colors, effects, time_idx, xlim, ylim):
         """Pattern di interferenza strutturato - onde che si incrociano come nell'immagine"""
         x = np.linspace(0, xlim, 1000)
-        time_offset = time_idx * effects.get('speed', 0.1)
+        time_offset = self._time_offset(time_idx, effects)
         intensity = effects.get('intensity', 1.0)
-        randomness = effects.get('randomness', 0.0)
         
         # Layer 1: Onde ampie (basse frequenze) - rosse/arancioni
-        num_low_waves = int(3 + low * 2)
+        num_low_waves = 4  # numero fisso: niente linee che compaiono/spariscono tra frame
         for i in range(num_low_waves):
             base_freq = 0.4 + i * 0.3
-            random_offset = np.random.random() * randomness if randomness > 0 else 0
+            random_offset = self._rand(effects)
             
             # Onda principale
             y1 = ylim/2 + low * intensity * 2.0 * np.sin(2 * np.pi * base_freq * x/xlim + time_offset + random_offset)
@@ -289,10 +300,10 @@ class AudioVisualizer:
             ax.plot(x, y2, color=colors['low'], linewidth=2.5 + low*1.5*intensity, alpha=0.5)
         
         # Layer 2: Onde medie (frequenze medie) - blu/turchesi
-        num_mid_waves = int(4 + mid * 3)
+        num_mid_waves = 5
         for i in range(num_mid_waves):
             base_freq = 1.0 + i * 0.4
-            random_offset = np.random.random() * randomness if randomness > 0 else 0
+            random_offset = self._rand(effects)
             
             # Pattern di interferenza più complesso
             y1 = ylim/2 + mid * intensity * 1.2 * np.sin(2 * np.pi * base_freq * x/xlim + time_offset * 1.5 + random_offset)
@@ -304,10 +315,10 @@ class AudioVisualizer:
             ax.plot(x, y3, color=colors['mid'], linewidth=1 + mid*0.8*intensity, alpha=0.4)
         
         # Layer 3: Onde acute (alte frequenze) - gialle/bianche
-        num_high_waves = int(6 + high * 4)
+        num_high_waves = 8
         for i in range(num_high_waves):
             base_freq = 2.0 + i * 0.5
-            random_offset = np.random.random() * randomness if randomness > 0 else 0
+            random_offset = self._rand(effects)
             
             # Onde rapide e sottili che si intersecano
             y1 = ylim/2 + high * intensity * 0.8 * np.sin(2 * np.pi * base_freq * x/xlim + time_offset * 3 + random_offset)
@@ -321,9 +332,8 @@ class AudioVisualizer:
     def draw_flowing_waves(self, ax, low, mid, high, colors, effects, time_idx, xlim, ylim):
         """Pattern completamente nuovo: Onde Stratificate Orizzontali come nell'immagine"""
         x = np.linspace(0, xlim, 1200)
-        time_offset = time_idx * effects.get('speed', 0.1)
+        time_offset = self._time_offset(time_idx, effects)
         intensity = effects.get('intensity', 1.0)
-        randomness = effects.get('randomness', 0.0)
         
         # Dividi lo schermo in fasce orizzontali
         num_layers = 12
@@ -337,7 +347,7 @@ class AudioVisualizer:
             for wave_idx in range(3):
                 freq = 0.3 + layer * 0.1 + wave_idx * 0.2
                 amplitude = low * intensity * (0.4 + 0.3 * (layer/4))
-                random_offset = np.random.random() * randomness if randomness > 0 else 0
+                random_offset = self._rand(effects)
                 
                 # Onda principale stratificata
                 wave_y = y_base + amplitude * np.sin(2 * np.pi * freq * x/xlim + time_offset + random_offset)
@@ -355,7 +365,7 @@ class AudioVisualizer:
             for wave_idx in range(4):  # Più onde per layer
                 freq = 0.8 + (layer-4) * 0.2 + wave_idx * 0.3
                 amplitude = mid * intensity * (0.3 + 0.2 * ((layer-4)/4))
-                random_offset = np.random.random() * randomness if randomness > 0 else 0
+                random_offset = self._rand(effects)
                 
                 wave_y = y_base + amplitude * np.sin(2 * np.pi * freq * x/xlim + time_offset * 1.5 + random_offset)
                 
@@ -371,7 +381,7 @@ class AudioVisualizer:
             for wave_idx in range(5):  # Molte onde sottili
                 freq = 1.5 + (layer-8) * 0.3 + wave_idx * 0.4
                 amplitude = high * intensity * (0.2 + 0.15 * ((layer-8)/4))
-                random_offset = np.random.random() * randomness if randomness > 0 else 0
+                random_offset = self._rand(effects)
                 
                 wave_y = y_base + amplitude * np.sin(2 * np.pi * freq * x/xlim + time_offset * 2.5 + random_offset)
                 
@@ -384,54 +394,54 @@ class AudioVisualizer:
     def draw_am_waves(self, ax, low, mid, high, colors, effects, time_idx, xlim, ylim):
         """Onde sinusoidali con modulazione di ampiezza (AM) per le 3 bande"""
         x = np.linspace(0, xlim, 800)
-        time_offset = time_idx * effects.get('speed', 0.1)
+        time_offset = self._time_offset(time_idx, effects)
         intensity = effects.get('intensity', 1.0)
         
         # Low freq - modulazione lenta e ampia
         am_low = (1 + 0.5 * np.sin(2 * np.pi * 0.2 * x/xlim + time_offset)) 
-        y_low = ylim*0.3 + low * intensity * am_low * np.sin(2 * np.pi * 0.4 * x/xlim + time_offset)
+        y_low = ylim*0.3 + low * intensity * am_low * np.sin(2 * np.pi * 0.4 * x/xlim + time_offset + self._rand(effects))
         ax.plot(x, y_low, color=colors['low'], linewidth=3*low*intensity, alpha=0.8)
 
         # Mid freq - modulazione media
         am_mid = (1 + 0.4 * np.sin(2 * np.pi * 0.4 * x/xlim + time_offset*1.2))
-        y_mid = ylim*0.5 + mid * intensity * am_mid * np.sin(2 * np.pi * 0.8 * x/xlim + time_offset*1.5)
+        y_mid = ylim*0.5 + mid * intensity * am_mid * np.sin(2 * np.pi * 0.8 * x/xlim + time_offset*1.5 + self._rand(effects))
         ax.plot(x, y_mid, color=colors['mid'], linewidth=2.5*mid*intensity, alpha=0.7)
 
         # High freq - modulazione veloce
         am_high = (1 + 0.3 * np.sin(2 * np.pi * 0.8 * x/xlim + time_offset*2))
-        y_high = ylim*0.7 + high * intensity * am_high * np.sin(2 * np.pi * 1.6 * x/xlim + time_offset*2.2)
+        y_high = ylim*0.7 + high * intensity * am_high * np.sin(2 * np.pi * 1.6 * x/xlim + time_offset*2.2 + self._rand(effects))
         ax.plot(x, y_high, color=colors['high'], linewidth=2*high*intensity, alpha=0.9)
 
     def draw_fm_waves(self, ax, low, mid, high, colors, effects, time_idx, xlim, ylim):
         """Onde sinusoidali con modulazione di frequenza (FM) per le 3 bande"""
         x = np.linspace(0, xlim, 800)
-        time_offset = time_idx * effects.get('speed', 0.1)
+        time_offset = self._time_offset(time_idx, effects)
         intensity = effects.get('intensity', 1.0)
         
         # Low freq - FM lenta
         freq_low = 0.4 + 0.1 * np.sin(2 * np.pi * 0.2 * x/xlim + time_offset)
-        y_low = ylim*0.3 + low * intensity * np.sin(2 * np.pi * freq_low * x/xlim + time_offset)
+        y_low = ylim*0.3 + low * intensity * np.sin(2 * np.pi * freq_low * x/xlim + time_offset + self._rand(effects))
         ax.plot(x, y_low, color=colors['low'], linewidth=3*low*intensity, alpha=0.8)
 
         # Mid freq - FM media
         freq_mid = 0.8 + 0.15 * np.sin(2 * np.pi * 0.3 * x/xlim + time_offset*1.3)
-        y_mid = ylim*0.5 + mid * intensity * np.sin(2 * np.pi * freq_mid * x/xlim + time_offset*1.4)
+        y_mid = ylim*0.5 + mid * intensity * np.sin(2 * np.pi * freq_mid * x/xlim + time_offset*1.4 + self._rand(effects))
         ax.plot(x, y_mid, color=colors['mid'], linewidth=2.5*mid*intensity, alpha=0.7)
 
         # High freq - FM veloce
         freq_high = 1.6 + 0.2 * np.sin(2 * np.pi * 0.5 * x/xlim + time_offset*1.8)
-        y_high = ylim*0.7 + high * intensity * np.sin(2 * np.pi * freq_high * x/xlim + time_offset*1.9)
+        y_high = ylim*0.7 + high * intensity * np.sin(2 * np.pi * freq_high * x/xlim + time_offset*1.9 + self._rand(effects))
         ax.plot(x, y_high, color=colors['high'], linewidth=2*high*intensity, alpha=0.9)
 
     def draw_reflected_waves(self, ax, low, mid, high, colors, effects, time_idx, xlim, ylim):
         """Onde sinusoidali riflesse simmetricamente per le 3 bande"""
         x = np.linspace(0, xlim, 800)
-        time_offset = time_idx * effects.get('speed', 0.1)
+        time_offset = self._time_offset(time_idx, effects)
         intensity = effects.get('intensity', 1.0)
         
-        # Funzione helper per specchiare onde
+        # Funzione helper per specchiare onde (stessa fase casuale per l'onda e il suo riflesso)
         def draw_reflected(y_base, amplitude, freq, color, width, alpha):
-            y = amplitude * np.sin(2 * np.pi * freq * x/xlim + time_offset)
+            y = amplitude * np.sin(2 * np.pi * freq * x/xlim + time_offset + self._rand(effects))
             ax.plot(x, y_base + y, color=color, linewidth=width, alpha=alpha)
             ax.plot(x, y_base - y, color=color, linewidth=width, alpha=alpha)
         
@@ -442,69 +452,68 @@ class AudioVisualizer:
         # High
         draw_reflected(ylim*0.7, high * intensity, 1.6, colors['high'], 2*high*intensity, 0.9)
     
-    # NUOVI EFFETTI AGGIUNTI
     def draw_varied_amplitude_waves(self, ax, low, mid, high, colors, effects, time_idx, xlim, ylim):
         """Onde con ampiezza modulata diversamente per ogni banda"""
         x = np.linspace(0, xlim, 800)
-        time_offset = time_idx * effects.get('speed', 0.1)
+        time_offset = self._time_offset(time_idx, effects)
         intensity = effects.get('intensity', 1.0)
         
         # Low: pulsazione esponenziale
         amp_low = low * intensity * (0.5 + 0.5 * np.exp(np.sin(0.5 * x/xlim + time_offset)))
-        y_low = ylim*0.3 + amp_low * np.sin(2 * np.pi * 0.4 * x/xlim + time_offset)
+        y_low = ylim*0.3 + amp_low * np.sin(2 * np.pi * 0.4 * x/xlim + time_offset + self._rand(effects))
         ax.plot(x, y_low, color=colors['low'], linewidth=3, alpha=0.8)
 
         # Mid: ampiezza a gradini
         steps = np.floor(5 * x/xlim) / 5  # 5 gradini
         amp_mid = mid * intensity * (0.4 + 0.6 * steps)
-        y_mid = ylim*0.5 + amp_mid * np.sin(2 * np.pi * 0.8 * x/xlim + time_offset*1.5)
+        y_mid = ylim*0.5 + amp_mid * np.sin(2 * np.pi * 0.8 * x/xlim + time_offset*1.5 + self._rand(effects))
         ax.plot(x, y_mid, color=colors['mid'], linewidth=2.5, alpha=0.7)
 
         # High: modulazione lenta
         amp_high = high * intensity * (0.6 + 0.4 * np.sin(0.2 * x/xlim + time_offset*0.5))
-        y_high = ylim*0.7 + amp_high * np.sin(2 * np.pi * 1.6 * x/xlim + time_offset*2)
+        y_high = ylim*0.7 + amp_high * np.sin(2 * np.pi * 1.6 * x/xlim + time_offset*2 + self._rand(effects))
         ax.plot(x, y_high, color=colors['high'], linewidth=2, alpha=0.9)
 
     def draw_varied_shape_waves(self, ax, low, mid, high, colors, effects, time_idx, xlim, ylim):
         """Onde con forme diverse per ogni banda"""
         x = np.linspace(0, xlim, 800)
-        time_offset = time_idx * effects.get('speed', 0.1)
+        time_offset = self._time_offset(time_idx, effects)
         intensity = effects.get('intensity', 1.0)
         
         # Low: sinusoide classica
-        y_low = ylim*0.3 + low * intensity * np.sin(2 * np.pi * 0.4 * x/xlim + time_offset)
+        y_low = ylim*0.3 + low * intensity * np.sin(2 * np.pi * 0.4 * x/xlim + time_offset + self._rand(effects))
         ax.plot(x, y_low, color=colors['low'], linewidth=3, alpha=0.8)
 
         # Mid: sinusoide + armonica (più appuntita)
-        theta = 2 * np.pi * 0.8 * x/xlim + time_offset*1.5
+        theta = 2 * np.pi * 0.8 * x/xlim + time_offset*1.5 + self._rand(effects)
         y_mid = ylim*0.5 + mid * intensity * (np.sin(theta) + 0.3 * np.sin(2*theta))
         ax.plot(x, y_mid, color=colors['mid'], linewidth=2.5, alpha=0.7)
 
         # High: doppio seno (effetto schiacciato)
-        y_high = ylim*0.7 + high * intensity * np.sin(np.sin(2 * np.pi * 1.6 * x/xlim + time_offset*2))
+        y_high = ylim*0.7 + high * intensity * np.sin(np.sin(2 * np.pi * 1.6 * x/xlim + time_offset*2 + self._rand(effects)))
         ax.plot(x, y_high, color=colors['high'], linewidth=2, alpha=0.9)
 
     def draw_varied_motion_waves(self, ax, low, mid, high, colors, effects, time_idx, xlim, ylim):
         """Onde con movimenti diversi per ogni banda"""
         x = np.linspace(0, xlim, 800)
-        time_offset = time_idx * effects.get('speed', 0.1)
+        time_offset = self._time_offset(time_idx, effects)
         intensity = effects.get('intensity', 1.0)
         
         # Low: movimento orizzontale standard
-        y_low = ylim*0.3 + low * intensity * np.sin(2 * np.pi * 0.4 * x/xlim + time_offset)
+        y_low = ylim*0.3 + low * intensity * np.sin(2 * np.pi * 0.4 * x/xlim + time_offset + self._rand(effects))
         ax.plot(x, y_low, color=colors['low'], linewidth=3, alpha=0.8)
 
         # Mid: movimento diagonale (x e y combinati)
-        y_mid = ylim*0.5 + mid * intensity * np.sin(2 * np.pi * 0.8 * (0.7*x/xlim + 0.3*y_low/ylim) + time_offset*1.5)
+        y_mid = ylim*0.5 + mid * intensity * np.sin(2 * np.pi * 0.8 * (0.7*x/xlim + 0.3*y_low/ylim) + time_offset*1.5 + self._rand(effects))
         ax.plot(x, y_mid, color=colors['mid'], linewidth=2.5, alpha=0.7)
 
         # High: movimento a zig-zag (inversione di fase)
         phase_mod = np.sign(np.sin(0.5 * time_offset))  # inverte la fase periodicamente
-        y_high = ylim*0.7 + high * intensity * np.sin(2 * np.pi * 1.6 * x/xlim + phase_mod * time_offset*2)
+        y_high = ylim*0.7 + high * intensity * np.sin(2 * np.pi * 1.6 * x/xlim + phase_mod * time_offset*2 + self._rand(effects))
         ax.plot(x, y_high, color=colors['high'], linewidth=2, alpha=0.9)
     
     def generate_preview_frames(self, pattern_type, colors, effects, num_frames=12):
-        """Genera una griglia di frame preview a bassa risoluzione (no time.sleep)"""
+        """Genera una griglia di frame preview a bassa risoluzione"""
         preview_times = np.linspace(0, len(self.times) - 1, num_frames, dtype=int)
         frames = []
         for t_idx in preview_times:
@@ -516,15 +525,14 @@ class AudioVisualizer:
                 dpi=72
             )
             buf = io.BytesIO()
-            fig.savefig(buf, format='png', bbox_inches='tight', pad_inches=0)
-            plt.close(fig)
+            fig.savefig(buf, format='png', dpi=72, facecolor=fig.get_facecolor())
             buf.seek(0)
             frames.append(buf.read())
         return frames
 
     def generate_social_report(self, audio_filename, video_title, pattern_type, colors, effects,
                                 fps, total_frames, video_quality, aspect_ratio,
-                                low_percent, mid_percent, high_percent):
+                                low_percent, mid_percent, high_percent, spectral_shares):
         """Genera testo stilizzato per social/YouTube da scaricare"""
         pattern_labels = {
             "waves": "Classic Waves",
@@ -540,10 +548,11 @@ class AudioVisualizer:
         pattern_label = pattern_labels.get(pattern_type, pattern_type.title())
 
         # Dominant frequency band
+        spec_low, spec_mid, spec_high = spectral_shares
         dominants = [
-            (low_percent, "low frequencies", "Red Line",   "LOW"),
-            (mid_percent,  "mid frequencies", "Blue Line",  "MID"),
-            (high_percent, "high frequencies","White Line", "HIGH"),
+            (spec_low,  "low frequencies",  "Red Line",   "LOW"),
+            (spec_mid,  "mid frequencies",  "Blue Line",  "MID"),
+            (spec_high, "high frequencies", "White Line", "HIGH"),
         ]
         dominant = max(dominants, key=lambda x: x[0])
 
@@ -575,7 +584,7 @@ An audio visualization generated in real time from the frequencies
 of *{track_name}*.
 
 The *{pattern_label}* pattern responds to the song's spectral data:
-{dominant[1]} dominate with {dominant[0]:.1f}% of the visual energy,
+{dominant[1]} dominate with {dominant[0]:.1f}% of the spectral energy,
 creating a {intensity_word}, {speed_word} animation,
 {randomness_word}.
 
@@ -591,6 +600,14 @@ creating a {intensity_word}, {speed_word} animation,
   Red Line:    LOW   20–250 Hz       {low_percent:.1f}%
   Blue Line:   MID   250–4000 Hz     {mid_percent:.1f}%
   White Line:  HIGH  4000–20000 Hz   {high_percent:.1f}%
+
+  (visual weight: each band is normalised to its own peak)
+
+:: SPECTRAL ENERGY
+
+  LOW   20–250 Hz       {spec_low:.1f}%
+  MID   250–4000 Hz     {spec_mid:.1f}%
+  HIGH  4000–20000 Hz   {spec_high:.1f}%
 
   Dominant › {dominant[1]} ({dominant[0]:.1f}%)
 
@@ -624,131 +641,125 @@ audioreactive, waveform, sounddesign, generativeart,
 
     def create_video_no_audio(self, output_path, pattern_type, colors, effects, fps, 
                              aspect_ratio="16:9 (Standard)", video_quality="Media (1280x720)", 
-                             title_settings=None):
-        """Crea un video senza audio"""
-        # Reset statistiche colori
-        self.color_statistics = {
-            'low_total': 0,
-            'mid_total': 0,
-            'high_total': 0,
-            'total_energy': 0
-        }
-        
-        # Calcola la risoluzione finale
+                             title_settings=None, progress_cb=None):
+        """Crea un video senza audio, scrivendo i frame in streaming (niente PNG su disco)"""
+        stats = self.new_statistics()
         resolution_px = self.get_resolution(video_quality, aspect_ratio)
-        
-        # Calcola il numero totale di frame
-        total_frames = int(self.duration * fps)
-        progress_bar = st.progress(0)
-        status_text = st.empty()
-        
-        # Crea una directory temporanea per i frame
-        temp_dir = tempfile.mkdtemp()
-        frame_paths = []
-        
-        # Calcola il passo temporale per frame
-        time_step = self.times[-1] / total_frames
-        
-        # Genera tutti i frame
-        for frame_idx in range(total_frames):
-            # Calcola il tempo corrente
-            current_time = frame_idx * time_step
-            
-            # Trova l'indice temporale più vicino
-            time_idx = np.argmin(np.abs(self.times - current_time))
-            
-            # Crea frame con la risoluzione corretta
-            fig = self.create_pattern_frame(
-                time_idx, pattern_type, colors, effects, aspect_ratio, 
-                title_settings, resolution_px=resolution_px, dpi=100
-            )
-            
-            # Salva il frame come immagine
-            frame_path = os.path.join(temp_dir, f"frame_{frame_idx:04d}.png")
-            fig.savefig(frame_path, bbox_inches='tight', pad_inches=0)
-            plt.close(fig)
-            frame_paths.append(frame_path)
-            
-            # Aggiorna progresso
-            progress = (frame_idx + 1) / total_frames
-            progress_bar.progress(progress)
-            status_text.text(f"Generando frame {frame_idx+1}/{total_frames}")
-        
-        # Crea video dai frame
-        with imageio.get_writer(output_path, fps=fps) as writer:
-            for frame_path in frame_paths:
-                image = imageio.imread(frame_path)
-                writer.append_data(image)
-                os.remove(frame_path)  # Rimuovi frame dopo l'uso
-        
-        # Rimuovi directory temporanea
-        os.rmdir(temp_dir)
-        status_text.text("✅ Video senza audio creato")
-        progress_bar.empty()
-        
-        return total_frames, resolution_px
-    
+
+        total_frames = max(1, int(self.duration * fps))
+        time_step = self.duration / total_frames
+        last_idx = len(self.times) - 1
+
+        writer = imageio_ffmpeg.write_frames(
+            output_path, resolution_px, fps=fps, quality=6,
+            macro_block_size=1,            # niente resize a multipli di 16 (1080 -> 1088)
+            pix_fmt_in="rgb24", pix_fmt_out="yuv420p",
+            ffmpeg_log_level="error"
+        )
+        writer.send(None)  # avvia il generatore
+        try:
+            for frame_idx in range(total_frames):
+                current_time = frame_idx * time_step
+                time_idx = int(np.clip(round(current_time * self.sr / self.hop_length), 0, last_idx))
+
+                self.update_statistics(stats, time_idx)
+                fig = self.create_pattern_frame(
+                    time_idx, pattern_type, colors, effects, aspect_ratio,
+                    title_settings, resolution_px=resolution_px, dpi=100
+                )
+                writer.send(self.fig_to_rgb(fig, resolution_px).tobytes())
+
+                if progress_cb:
+                    progress_cb(frame_idx + 1, total_frames)
+        finally:
+            writer.close()
+
+        return total_frames, resolution_px, stats
+
+    @staticmethod
+    def _ffmpeg_exe():
+        """ffmpeg incluso in imageio-ffmpeg, altrimenti quello di sistema"""
+        try:
+            return imageio_ffmpeg.get_ffmpeg_exe()
+        except Exception:
+            return shutil.which('ffmpeg')
+
     def create_video_with_audio(self, output_path, pattern_type, colors, effects, fps, 
                                audio_filename="Unknown Track", video_quality="Media (1280x720)", 
                                aspect_ratio="16:9 (Standard)", video_title="My Audio Visual", title_settings=None):
         """Crea un video completo con audio e genera report finale"""
-        # Crea un video temporaneo senza audio
-        temp_video_path = output_path.replace('.mp4', '_no_audio.mp4')
-        total_frames, resolution_px = self.create_video_no_audio(
-            temp_video_path, pattern_type, colors, effects, fps, 
-            aspect_ratio, video_quality, title_settings
-        )
-        
-        # Crea un file audio temporaneo
-        temp_audio_path = output_path.replace('.mp4', '.wav')
-        
-        # Estrai l'audio corrispondente alla durata effettiva
-        start_sample = 0
-        end_sample = int(self.duration * self.sr)
-        audio_segment = self.audio_data[start_sample:end_sample]
-        
-        # Normalizza e salva l'audio
-        if np.max(np.abs(audio_segment)) > 0:
-            audio_segment = audio_segment / np.max(np.abs(audio_segment))
-        wavfile.write(temp_audio_path, self.sr, audio_segment)
-        
-        # Combina video e audio usando FFmpeg
-        try:
+        ffmpeg = self._ffmpeg_exe()
+        if not ffmpeg:
+            st.error("ffmpeg non trovato: aggiungi `imageio-ffmpeg` a requirements.txt "
+                     "(oppure `ffmpeg` a packages.txt).")
+            return False
+
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+
+        def on_progress(done, total):
+            progress_bar.progress(done / total)
+            status_text.text(f"Generando frame {done}/{total}")
+
+        # Tutti i file intermedi vivono in una directory temporanea che sparisce sempre
+        with tempfile.TemporaryDirectory() as work_dir:
+            temp_video_path = os.path.join(work_dir, 'video_no_audio.mp4')
+            temp_audio_path = os.path.join(work_dir, 'audio.wav')
+
+            try:
+                total_frames, resolution_px, stats = self.create_video_no_audio(
+                    temp_video_path, pattern_type, colors, effects, fps,
+                    aspect_ratio, video_quality, title_settings, progress_cb=on_progress
+                )
+            except Exception as exc:
+                progress_bar.empty()
+                status_text.empty()
+                st.error(f"Errore durante il rendering dei frame: {exc}")
+                return False
+
+            status_text.text("🔊 Unisco audio e video...")
+
+            # Estrai l'audio corrispondente alla durata effettiva
+            end_sample = int(self.duration * self.sr)
+            audio_segment = self.audio_data[:end_sample]
+            if np.max(np.abs(audio_segment)) > 0:
+                audio_segment = audio_segment / np.max(np.abs(audio_segment))
+            wavfile.write(temp_audio_path, self.sr, audio_segment.astype(np.float32))
+
             command = [
-                'ffmpeg',
-                '-y',  # Sovrascrivi senza chiedere
+                ffmpeg, '-y',
                 '-i', temp_video_path,
                 '-i', temp_audio_path,
-                '-c:v', 'copy',  # Copia il video senza ri-encodare
-                '-c:a', 'aac',   # Encodare audio in AAC
-                '-shortest',     # Termina quando il più corto dei due stream termina
-                '-strict', 'experimental',
+                '-c:v', 'copy',              # copia il video senza ri-encodare
+                '-c:a', 'aac', '-b:a', '192k',
+                '-shortest',
+                '-movflags', '+faststart',   # avvio rapido per web/social
                 output_path
             ]
-            subprocess.run(command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            
-            # Genera e mostra il report finale
-            self.show_generation_report(audio_filename, video_title, pattern_type, 
-                                      colors, effects, fps, total_frames, 
-                                      video_quality, aspect_ratio, title_settings,
-                                      resolution_px)
-            
-            return True
-            
-        except subprocess.CalledProcessError as e:
-            st.error(f"Errore durante la combinazione audio/video: {e.stderr.decode()}")
-            return False
-        finally:
-            # Pulisci i file temporanei
-            if os.path.exists(temp_video_path):
-                os.remove(temp_video_path)
-            if os.path.exists(temp_audio_path):
-                os.remove(temp_audio_path)
+            try:
+                subprocess.run(command, check=True, capture_output=True)
+            except subprocess.CalledProcessError as exc:
+                st.error(f"Errore durante la combinazione audio/video: {exc.stderr.decode(errors='replace')}")
+                return False
+            except OSError as exc:
+                st.error(f"Impossibile eseguire ffmpeg: {exc}")
+                return False
+            finally:
+                progress_bar.empty()
+                status_text.empty()
+
+        self.show_generation_report(audio_filename, video_title, pattern_type,
+                                    colors, effects, fps, total_frames,
+                                    video_quality, aspect_ratio, title_settings,
+                                    resolution_px, stats)
+        return True
     
-    def show_generation_report(self, audio_filename, video_title, pattern_type, colors, effects, fps, total_frames, video_quality, aspect_ratio, title_settings, resolution_px):
+    def show_generation_report(self, audio_filename, video_title, pattern_type, colors, effects, fps, total_frames, video_quality, aspect_ratio, title_settings, resolution_px, stats):
         """Mostra il report dettagliato della generazione"""
         # Calcola le percentuali dei colori
-        low_percent, mid_percent, high_percent = self.get_color_percentages()
+        low_percent, mid_percent, high_percent = self.get_color_percentages(stats)
+        spectral_shares = self.get_spectral_shares(stats)
+        spec_low, spec_mid, spec_high = spectral_shares
         
         # Formatta la risoluzione
         final_resolution = f"{resolution_px[0]}x{resolution_px[1]}"
@@ -779,7 +790,7 @@ audioreactive, waveform, sounddesign, generativeart,
         title_info = "❌ Disabilitato"
         if title_settings and title_settings['text']:
             title_position = f"{title_settings['v_position']} {title_settings['h_position']}"
-            title_info = f"{title_settings['text']} ({title_position}, {title_settings['fontsize']}px)"
+            title_info = f"{title_settings['text']} ({title_position}, {title_settings['fontsize']}pt)"
         
         # Crea il report
         report = f"""
@@ -792,10 +803,15 @@ audioreactive, waveform, sounddesign, generativeart,
 **📺 Resolution:** {final_resolution}  
 **📐 Aspect Ratio:** {aspect_ratio}
 
-### 🌈 Color Distribution by Frequency:
+### 🌈 Color Distribution (visual weight):
 - **🔴 Low Frequencies (20-250Hz):** {low_percent:.1f}%
 - **🔵 Mid Frequencies (250-4000Hz):** {mid_percent:.1f}%  
 - **⚪ High Frequencies (4000-20000Hz):** {high_percent:.1f}%
+
+### 📊 Spectral Energy (real share of the track):
+- **Low (20-250Hz):** {spec_low:.1f}%
+- **Mid (250-4000Hz):** {spec_mid:.1f}%
+- **High (4000-20000Hz):** {spec_high:.1f}%
 
 ### ⚙️ Wave Configuration:
 - **🌊 Wave Style:** {pattern_names.get(pattern_type, pattern_type.title())}
@@ -819,7 +835,8 @@ audioreactive, waveform, sounddesign, generativeart,
         social_report = self.generate_social_report(
             audio_filename, video_title, pattern_type,
             colors, effects, fps, total_frames,
-            video_quality, aspect_ratio, low_percent, mid_percent, high_percent
+            video_quality, aspect_ratio, low_percent, mid_percent, high_percent,
+            spectral_shares
         )
         st.session_state['social_report'] = social_report
 
@@ -833,6 +850,39 @@ audioreactive, waveform, sounddesign, generativeart,
         **Dettagli:** {total_frames:,} frames • {fps} FPS • {self.duration:.1f}s • Wave: {pattern_names.get(pattern_type, pattern_type)} • {final_resolution}
         **Effetti:** Intensità {intensity_desc} • Velocità {effects.get('speed', 0.1)}x • Casualità {effects.get('randomness', 0.0)*100:.0f}%
         """)
+
+def load_audio(audio_bytes, filename):
+    """Carica l'audio da bytes. Se librosa non lo decodifica (es. m4a) ripiega su ffmpeg -> wav."""
+    suffix = os.path.splitext(filename or '')[1].lower() or '.wav'
+    with tempfile.TemporaryDirectory() as work_dir:
+        path = os.path.join(work_dir, 'input' + suffix)
+        with open(path, 'wb') as f:
+            f.write(audio_bytes)
+        try:
+            return librosa.load(path, sr=None, mono=True)
+        except Exception:
+            ffmpeg = AudioVisualizer._ffmpeg_exe()
+            if not ffmpeg:
+                raise
+            wav_path = os.path.join(work_dir, 'decoded.wav')
+            subprocess.run([ffmpeg, '-y', '-i', path, '-vn', '-acodec', 'pcm_f32le', wav_path],
+                           check=True, capture_output=True)
+            return librosa.load(wav_path, sr=None, mono=True)
+
+
+@st.cache_resource(show_spinner=False, max_entries=2)
+def get_visualizer(file_hash, _audio_bytes, filename):
+    """Analisi audio una sola volta per file (non a ogni rerun di Streamlit)"""
+    audio_data, sr = load_audio(_audio_bytes, filename)
+    return AudioVisualizer(audio_data, sr)
+
+
+def show_image(container, data):
+    """st.image: use_container_width è deprecato in favore di width="stretch"."""
+    try:
+        container.image(data, width="stretch")
+    except Exception:
+        container.image(data, use_container_width=True)
 
 # Configurazione pagina
 st.set_page_config(
@@ -881,7 +931,7 @@ def main():
             "fm": "🎛️ Onde FM (Frequenza Modulata)",
             "reflected": "🪞 Onde Riflesse",
             "interference": "🔄 Onde Interferenza", 
-            "flowing": "💫 Onde Fluide",
+            "flowing": "💫 Onde Stratificate",
             "varied_amplitude": "📈 Onde Ampiezza Variabile",
             "varied_shape": "🔷 Onde Forma Variabile",
             "varied_motion": "↕️ Onde Movimento Variabile"
@@ -938,11 +988,16 @@ def main():
     randomness_factor = st.sidebar.slider("Casualità", 0.0, 1.0, 0.0, 0.05,
                                         help="Aggiunge variazione casuale alle onde")
     
+    # Seed: stesso seed = stessi frame (casualità riproducibile)
+    seed_value = st.sidebar.number_input("Seed", min_value=0, max_value=2**31 - 1, value=507, step=1,
+                                         help="Rende riproducibile la casualità: stesso seed = stesso video")
+
     # Preparazione effetti
     effects = {
         'intensity': intensity_multiplier,
         'speed': speed_multiplier,
-        'randomness': randomness_factor
+        'randomness': randomness_factor,
+        'seed': int(seed_value)
     }
     
     # FPS per la visualizzazione
@@ -965,15 +1020,16 @@ def main():
     
     if uploaded_file is not None:
         with st.spinner("🎵 Caricamento e analisi audio..."):
-            # Carica file audio
-            audio_bytes = uploaded_file.read()
-            audio_data, sr = librosa.load(io.BytesIO(audio_bytes), sr=None)
-            
-            # Calcola la durata effettiva
-            duration = len(audio_data) / sr
-            
-            # Crea visualizzatore con la durata effettiva
-            visualizer = AudioVisualizer(audio_data, sr)
+            # Carica file audio (analisi in cache: si rifà solo se cambia il file)
+            audio_bytes = uploaded_file.getvalue()
+            try:
+                visualizer = get_visualizer(hashlib.sha1(audio_bytes).hexdigest(),
+                                            audio_bytes, uploaded_file.name)
+            except Exception as exc:
+                st.error(f"Impossibile leggere il file audio: {exc}")
+                st.stop()
+            duration = visualizer.duration
+            sr = visualizer.sr
             
             # Prepara colori
             colors = {
@@ -1001,7 +1057,7 @@ def main():
             pattern_labels_ui = {
                 "waves": "🌊 Onde Classiche",
                 "interference": "🔄 Interferenza",
-                "flowing": "💫 Fluide",
+                "flowing": "💫 Stratificate",
                 "am": "📡 AM",
                 "fm": "🎛️ FM",
                 "reflected": "🪞 Riflesse",
@@ -1024,11 +1080,16 @@ def main():
             st.markdown("#### 🔍 Preview — campioni dal brano")
             cols = st.columns(4)
             for i, frame_bytes in enumerate(st.session_state['preview_frames']):
-                cols[i % 4].image(frame_bytes, use_container_width=True)
+                show_image(cols[i % 4], frame_bytes)
 
         # ── CREAZIONE VIDEO ──────────────────────────────────────────────
         if st.session_state.get('create_video'):
             with st.spinner("🎥 Creazione video wave in corso (potrebbe richiedere alcuni minuti)..."):
+                old_video = st.session_state.get('video_path')
+                if old_video and os.path.exists(old_video):
+                    os.remove(old_video)
+                st.session_state['video_path'] = None
+
                 with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as tmpfile:
                     video_path = tmpfile.name
 
@@ -1052,6 +1113,8 @@ def main():
                     st.session_state['video_path'] = video_path
                 else:
                     st.error("Errore nella creazione del video wave.")
+                    if os.path.exists(video_path):
+                        os.remove(video_path)
 
             st.session_state['create_video'] = False
 
@@ -1116,10 +1179,17 @@ def main():
         ### ↕️ **Onde Movimento Variabile**
         Movimenti distinti per ogni banda: orizzontale per le basse, diagonale per le medie, e zig-zag per le alte.
         
+        ### 📡 **Onde AM / 🎛️ FM**
+        Modulazione di ampiezza (AM) o di frequenza (FM) diversa per ogni banda.
+        
+        ### 🪞 **Onde Riflesse**
+        Ogni onda è specchiata simmetricamente attorno alla sua linea base.
+        
         **🎨 Caratteristiche:**
         - **9 stili wave unici** basati sulla tua immagine
         - **Colori personalizzabili** per ogni banda di frequenza
-        - **Report dettagliato** con distribuzione colori
+        - **Report dettagliato** con distribuzione colori ed energia spettrale reale
+        - **Seed** per render riproducibili (stessa casualità, stesso video)
         - **Aspect ratio multipli:** 16:9, 1:1, 9:16
         - **Qualità video HD** fino a 1920x1080
         
@@ -1140,7 +1210,8 @@ def main():
         # Demo wave pattern statico
         st.markdown("### 🌊 Anteprima Stili Wave")
         
-        demo_fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(14, 12), facecolor='black')
+        demo_fig = Figure(figsize=(14, 12), facecolor='black')
+        ax1, ax2, ax3 = demo_fig.subplots(3, 1)
         x = np.linspace(0, 16, 500)
         
         # Demo onde classiche
@@ -1183,12 +1254,11 @@ def main():
         
         ax3.set_xlim(0, 16)
         ax3.set_ylim(0, 4)
-        ax3.set_title('💫 Onde Fluide', color='white', fontsize=14, pad=20)
+        ax3.set_title('💫 Esempio: Onde Fluide', color='white', fontsize=14, pad=20)
         ax3.axis('off')
         
-        plt.tight_layout()
+        demo_fig.tight_layout()
         st.pyplot(demo_fig, clear_figure=True)
-        plt.close(demo_fig)
 
 if __name__ == "__main__":
     main()
